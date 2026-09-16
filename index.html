@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <title>321 Clementi Parking Redemption</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Step 1: Upload Receipt -->
+        <section id="upload-section" class="step active">
+            <h1>Upload Your Receipt</h1>
+            <p class="instruction">Take a clear photo of your 321 Clementi receipt</p>
+            
+            <label for="receipt-upload" class="camera-button">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                <span>Capture Receipt</span>
+            </label>
+            <input type="file" id="receipt-upload" accept="image/*" capture="environment" hidden>
+            
+            <div id="preview-container" class="preview-container hidden">
+                <img id="preview-image" alt="Receipt preview">
+                <div class="preview-info">
+                    <span id="file-size"></span>
+                </div>
+            </div>
+            
+            <button id="next-to-plate" class="btn-primary hidden">Continue</button>
+        </section>
+
+        <!-- Step 2: Vehicle Plate Input -->
+        <section id="plate-section" class="step">
+            <h1>Enter Vehicle Plate</h1>
+            <p class="instruction">Enter your Singapore vehicle registration number</p>
+            
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="vehicle-plate" 
+                    placeholder="e.g., SBA1234A"
+                    maxlength="8"
+                    autocapitalize="characters"
+                    autocomplete="off"
+                >
+                <div id="validation-feedback" class="feedback"></div>
+            </div>
+            
+            <div class="validation-hint">
+                <p>Format: ABC1234D (3 letters, 1-4 digits, 1 checksum letter)</p>
+            </div>
+            
+            <div class="button-row">
+                <button id="back-to-upload" class="btn-secondary">Back</button>
+                <button id="submit-redemption" class="btn-primary" disabled>Submit</button>
+            </div>
+            
+            <div id="loading-overlay" class="loading-overlay hidden">
+                <div class="spinner"></div>
+                <p>Processing redemption...</p>
+            </div>
+        </section>
+
+        <!-- Step 3: Barcode Display -->
+        <section id="barcode-section" class="step">
+            <h1>Your Parking Redemption</h1>
+            <p class="instruction">Scan this barcode at the carpark exit gantry</p>
+            
+            <div class="barcode-container">
+                <svg id="barcode"></svg>
+            </div>
+            
+            <div class="expiry-info">
+                <div class="timer-container">
+                    <span class="timer-label">Valid for:</span>
+                    <span id="countdown-timer" class="countdown-timer">15:00</span>
+                </div>
+                <p class="expiry-note">This redemption expires in 15 minutes</p>
+            </div>
+            
+            <div class="instructions-box">
+                <h3>How to use:</h3>
+                <ol>
+                    <li>Increase your phone brightness to maximum</li>
+                    <li>Present this screen to the exit gantry scanner</li>
+                    <li>Hold steady until the gate opens</li>
+                </ol>
+            </div>
+            
+            <button id="new-redemption" class="btn-secondary">New Redemption</button>
+        </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
