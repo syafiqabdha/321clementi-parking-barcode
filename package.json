@@ -1,0 +1,25 @@
+{
+  "name": "321clementi-parking-barcode",
+  "version": "1.0.0",
+  "description": "321 Clementi Smart Parking Receipt-to-Barcode Autonomous Redemption Engine",
+  "type": "module",
+  "scripts": {
+    "db:migrate": "bun run scripts/migrate.ts up",
+    "db:rollback": "bun run scripts/migrate.ts down",
+    "db:status": "bun run scripts/migrate.ts status",
+    "test": "bun test"
+  },
+  "keywords": [
+    "clementi",
+    "parking",
+    "barcode",
+    "postgresql",
+    "n8n",
+    "nocodb"
+  ],
+  "author": "Pancatz Foundry",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
