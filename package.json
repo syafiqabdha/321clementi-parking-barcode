@@ -1,0 +1,12 @@
+{
+  "name": "321clementi-parking-barcode",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0"
+  }
+}
