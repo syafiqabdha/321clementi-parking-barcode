@@ -1,0 +1,92 @@
+---
+// Quick redemption operating banner
+// Optimized for basement mall lighting with high-contrast text and crisp visual cues.
+---
+
+<section
+  class="w-full relative overflow-hidden rounded-lg bg-gradient-to-r from-[#ED1651] via-[#F47820] to-[#EF5A92] p-[1.5px] shadow-subtle mb-5"
+  aria-label="Operating Hours and Redemption Eligibility"
+>
+  <div class="bg-clementi-white rounded-[19px] p-4 sm:p-5 flex flex-col gap-3">
+    <!-- Header row with live operating badge -->
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <span class="relative flex h-3 w-3">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-clementi-crimson opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-clementi-crimson"></span>
+        </span>
+        <span class="text-xs font-semibold uppercase tracking-wider text-clementi-crimson font-display">
+          Exclusive Lunch Promotion
+        </span>
+      </div>
+
+      <div
+        id="live-operating-pill"
+        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#F8F9FA] border border-clementi-border text-clementi-charcoal"
+      >
+        <svg class="w-3.5 h-3.5 text-clementi-slate" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="operating-status-text">12:00 PM – 3:00 PM</span>
+      </div>
+    </div>
+
+    <!-- Main Banner Callout -->
+    <div class="border-l-4 border-clementi-crimson pl-3 py-0.5">
+      <h2 class="text-lg sm:text-xl font-bold text-clementi-charcoal font-display leading-snug">
+        12:00 PM – 3:00 PM Weekdays only
+      </h2>
+      <p class="text-sm text-clementi-slate mt-1 font-body">
+        Redeem <strong class="text-clementi-charcoal font-semibold">2 Hours Complimentary Parking</strong> with a minimum spend of <span class="inline-block px-1.5 py-0.5 rounded bg-pink-50 text-clementi-crimson font-bold border border-pink-100">$30.00</span> in a single same-day receipt.
+      </p>
+    </div>
+
+    <!-- Micro conditions pill badges -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-xs text-clementi-slate">
+      <div class="flex items-center gap-1.5 bg-clementi-subtle px-2.5 py-1.5 rounded-sm border border-clementi-border">
+        <span class="text-clementi-green font-bold">✓</span>
+        <span>Mon – Fri only</span>
+      </div>
+      <div class="flex items-center gap-1.5 bg-clementi-subtle px-2.5 py-1.5 rounded-sm border border-clementi-border">
+        <span class="text-clementi-cyan font-bold">✓</span>
+        <span>Min $30 spend</span>
+      </div>
+      <div class="flex items-center gap-1.5 bg-clementi-subtle px-2.5 py-1.5 rounded-sm border border-clementi-border col-span-2 sm:col-span-1">
+        <span class="text-clementi-orange font-bold">✓</span>
+        <span>1 pass / car / day</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Client-side helper to reflect Singapore Time (SGT UTC+8) operating status
+  function updateOperatingWindow() {
+    const statusPill = document.getElementById('live-operating-pill');
+    const statusText = document.getElementById('operating-status-text');
+    if (!statusPill || !statusText) return;
+
+    const now = new Date();
+    // Convert to SGT (UTC+8)
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const sgtTime = new Date(utc + (3600000 * 8));
+
+    const day = sgtTime.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    const hours = sgtTime.getHours();
+    const isWeekday = day >= 1 && day <= 5;
+    const isLunchHour = hours >= 12 && hours < 15;
+
+    if (isWeekday && isLunchHour) {
+      statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 border border-emerald-300 text-emerald-800';
+      statusText.textContent = 'Active Now (Ends 3:00 PM)';
+    } else if (isWeekday && hours < 12) {
+      statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 border border-amber-300 text-amber-800';
+      statusText.textContent = 'Starts at 12:00 PM';
+    } else {
+      statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-700';
+      statusText.textContent = '12:00 PM – 3:00 PM Weekdays';
+    }
+  }
+
+  updateOperatingWindow();
+</script>

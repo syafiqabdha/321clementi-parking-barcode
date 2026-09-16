@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Brand Chromatic Spectrum */
+  --clementi-crimson: #ED1651;
+  --clementi-orange:  #F47820;
+  --clementi-pink:    #EF5A92;
+  --clementi-lavender:#A87FB7;
+  --clementi-green:   #71BF45;
+  --clementi-cyan:    #38BEDD;
+
+  /* Neutral UI Tokens */
+  --color-bg-primary:   #FFFFFF;
+  --color-bg-subtle:    #F8F9FA;
+  --color-border:       #E2E8F0;
+  --color-text-main:    #1A202C;
+  --color-text-muted:   #4A5568;
+
+  /* Semantic Application */
+  --color-action-primary:   var(--clementi-crimson);
+  --color-action-hover:     #D01244;
+  --color-accent-wellness:  var(--clementi-green);
+  --color-accent-leisure:   var(--clementi-cyan);
+  --color-accent-dining:    var(--clementi-orange);
+  --color-accent-retail:    var(--clementi-pink);
+
+  /* Typography */
+  --font-display: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Spacing & Elevation */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --shadow-subtle: 0 4px 12px rgba(237, 22, 81, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+/* Base high-contrast reset for basement lighting */
+html {
+  font-family: var(--font-body);
+  color: var(--color-text-main);
+  background-color: var(--color-bg-subtle);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Touch targets for mobile */
+button, a, input, select {
+  touch-action: manipulation;
+}
+
+/* Focus visibility for accessibility (WCAG 2.1 AA/AAA) */
+:focus-visible {
+  outline: 2px solid var(--clementi-crimson);
+  outline-offset: 2px;
+}

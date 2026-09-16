@@ -1,0 +1,54 @@
+---
+// 3-step visual redemption flow
+const steps = [
+  {
+    num: '1',
+    title: 'Snap Mall Receipt',
+    desc: 'Min. $30 spend in a single same-day receipt from any 321 Clementi merchant.',
+    badgeBg: 'bg-[#F47820]',
+    badgeText: 'text-white',
+    iconColor: 'text-[#F47820]',
+  },
+  {
+    num: '2',
+    title: 'Enter Vehicle Number',
+    desc: 'Key in your Singapore vehicle registration number (e.g. SBA 1234 A).',
+    badgeBg: 'bg-[#38BEDD]',
+    badgeText: 'text-white',
+    iconColor: 'text-[#38BEDD]',
+  },
+  {
+    num: '3',
+    title: 'Scan at Carpark Gantry',
+    desc: 'Instant barcode generated on your screen for 2 hours complimentary parking.',
+    badgeBg: 'bg-[#ED1651]',
+    badgeText: 'text-white',
+    iconColor: 'text-[#ED1651]',
+  },
+];
+---
+
+<section class="w-full bg-clementi-white rounded-lg border border-clementi-border p-4 sm:p-5 shadow-subtle mb-5" aria-labelledby="steps-heading">
+  <h3 id="steps-heading" class="text-xs font-bold uppercase tracking-wider text-clementi-slate font-display mb-3 flex items-center gap-2">
+    <span class="w-2 h-2 rounded-full bg-clementi-crimson inline-block"></span>
+    How Autonomous Redemption Works
+  </h3>
+
+  <div class="space-y-3">
+    {steps.map((step) => (
+      <div class="flex items-start gap-3 p-3 rounded-md bg-clementi-subtle border border-clementi-border/60 transition-colors">
+        <div class={`flex-shrink-0 w-7 h-7 rounded-full ${step.badgeBg} ${step.badgeText} flex items-center justify-center font-display font-bold text-sm shadow-sm`}>
+          {step.num}
+        </div>
+        <div class="flex-1 min-w-0">
+          <h4 class="text-sm font-semibold text-clementi-charcoal font-display">
+            {step.title}
+          </h4>
+          <p class="text-xs text-clementi-slate mt-0.5 leading-relaxed font-body">
+            {step.desc}
+          </p>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
