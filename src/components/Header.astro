@@ -1,0 +1,17 @@
+---
+import Logo from './Logo.astro';
+---
+
+<header class="w-full bg-clementi-white border-b border-clementi-border sticky top-0 z-30 shadow-sm" role="banner">
+  <div class="max-w-md mx-auto px-4 py-3 flex flex-col items-center justify-center text-center">
+    <!-- Official 321 Clementi Logo with approved clearspace & sizing (>=120px) -->
+    <Logo width={160} height={160} class="mb-1" />
+    
+    <div class="mt-1">
+      <span class="inline-block text-[11px] font-semibold uppercase tracking-[0.24em] text-clementi-crimson font-display">
+        Smart Parking Portal
+      </span>
+      <h1 class="sr-only">321 Clementi Parking Redemption</h1>
+    </div>
+  </div>
+</header>

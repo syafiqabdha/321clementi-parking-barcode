@@ -1,13 +1,8 @@
 {
+  "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "types": ["bun-types"],
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "allowSyntheticDefaultImports": true
-  },
-  "include": ["src/**/*", "scripts/**/*", "tests/**/*"]
+    "strictNullChecks": true,
+    "allowJs": true,
+    "types": ["bun-types"]
+  }
 }

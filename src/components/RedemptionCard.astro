@@ -1,0 +1,173 @@
+---
+// Mobile-first card container optimized for basement mall lighting.
+// High contrast (WCAG AAA for text), clear touch targets, and resilient visibility.
+---
+
+<div
+  class="w-full bg-clementi-white rounded-lg border border-clementi-border shadow-card overflow-hidden transition-all mb-6"
+  data-testid="redemption-card-container"
+>
+  <!-- 321 Clementi Brand Ribbon (6-color spectrum top accent) -->
+  <div class="h-1.5 w-full flex" aria-hidden="true">
+    <div class="h-full flex-1 bg-[#71BF45]" title="Fresh Leaf Green"></div>
+    <div class="h-full flex-1 bg-[#38BEDD]" title="Coastal Cyan"></div>
+    <div class="h-full flex-1 bg-[#A87FB7]" title="Wisteria Lavender"></div>
+    <div class="h-full flex-1 bg-[#EF5A92]" title="Blossom Pink"></div>
+    <div class="h-full flex-1 bg-[#ED1651]" title="Clementi Crimson"></div>
+    <div class="h-full flex-1 bg-[#F47820]" title="Tangerine Orange"></div>
+  </div>
+
+  <div class="p-5 sm:p-6 space-y-5">
+    <!-- Card Heading -->
+    <div class="text-left">
+      <div class="inline-flex items-center gap-1.5 text-xs font-bold text-clementi-crimson uppercase tracking-wider font-display mb-1">
+        <span>Autonomous Self-Service</span>
+      </div>
+      <h2 class="text-xl sm:text-2xl font-bold text-clementi-charcoal font-display tracking-tight">
+        Claim Parking Voucher
+      </h2>
+      <p class="text-xs sm:text-sm text-clementi-slate mt-1 font-body leading-relaxed">
+        Skip the Information Counter queue. Verify your same-day receipt in seconds to receive an instant Code 128 barcode for car park exit.
+      </p>
+    </div>
+
+    <!-- Intake Form (Stage 2.1 UI Foundation) -->
+    <form id="redemption-form" class="space-y-4" onsubmit="return false;">
+      <!-- Step 1: Vehicle Plate Number -->
+      <div>
+        <label for="vehicle-plate" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display mb-1.5">
+          Vehicle Registration Number <span class="text-clementi-crimson" aria-hidden="true">*</span>
+        </label>
+        <div class="relative">
+          <input
+            type="text"
+            id="vehicle-plate"
+            name="vehiclePlate"
+            placeholder="e.g. SBA 1234 A"
+            maxlength="10"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            class="w-full px-3.5 py-3 rounded-md border-2 border-clementi-border focus:border-clementi-crimson focus:ring-2 focus:ring-pink-100 text-clementi-charcoal font-display font-bold text-base tracking-widest placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal transition-all outline-none uppercase bg-[#F8F9FA]"
+            required
+            aria-describedby="plate-helper"
+          />
+          <div class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-clementi-slate/70 font-display pointer-events-none">
+            SG
+          </div>
+        </div>
+        <p id="plate-helper" class="text-[11px] text-clementi-slate mt-1.5 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5 text-clementi-slate/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Validated with LTA MOD-19 checksum (1 pass per vehicle / patron per day).
+        </p>
+      </div>
+
+      <!-- Step 2: Receipt Upload Preview & Trigger (Prepared for Stage 2.2 Camera module) -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
+            Mall Receipt Photo <span class="text-clementi-crimson" aria-hidden="true">*</span>
+          </label>
+          <span class="text-[11px] text-clementi-slate font-medium">Min. $30 spend</span>
+        </div>
+        
+        <div
+          id="receipt-dropzone"
+          class="relative border-2 border-dashed border-clementi-border hover:border-clementi-crimson rounded-md p-4 bg-[#F8F9FA] text-center transition-colors cursor-pointer group"
+          role="button"
+          tabindex="0"
+          aria-label="Upload or snap mall receipt"
+        >
+          <input
+            type="file"
+            id="receipt-file-input"
+            accept="image/*"
+            capture="environment"
+            class="sr-only"
+            aria-hidden="true"
+          />
+
+          <div class="flex flex-col items-center justify-center py-2">
+            <div class="w-11 h-11 rounded-full bg-pink-50 text-clementi-crimson flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <span class="text-sm font-bold text-clementi-charcoal font-display">
+              Tap to Snap or Upload Receipt
+            </span>
+            <span class="text-xs text-clementi-slate mt-0.5">
+              Single same-day receipt showing date, store name & total ≥ $30.00
+            </span>
+          </div>
+        </div>
+
+        <!-- Store Exclusions Note from official T&Cs -->
+        <p class="text-[11px] text-amber-800 bg-amber-50/80 border border-amber-200/60 rounded px-2.5 py-1.5 mt-2 leading-tight">
+          <strong>Store Exclusions:</strong> Not applicable to Clementi Family & Aesthetic Clinic and GynaeMD Women's Clinic.
+        </p>
+      </div>
+
+      <!-- Action Button (Clementi Crimson #ED1651) -->
+      <div class="pt-1">
+        <button
+          type="button"
+          id="submit-redemption-btn"
+          class="w-full py-3.5 px-5 bg-action-primary hover:bg-action-hover active:bg-[#C0103E] text-clementi-white font-display font-bold text-sm tracking-wide rounded-md shadow-subtle hover:shadow-md transition-all flex items-center justify-center gap-2 focus:ring-4 focus:ring-pink-200"
+        >
+          <span>Generate Carpark Barcode</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Crucial IU CashCard Exit Reminder -->
+      <div class="rounded-md bg-blue-50/80 border border-blue-200/60 p-2.5 text-[11px] text-blue-900 leading-snug flex items-start gap-2">
+        <svg class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <strong class="font-bold">Exit Gantry Reminder:</strong> Remove your CashCard / NETS Motoring Card from your in-vehicle IU before scanning the complimentary barcode at the exit reader.
+        </div>
+      </div>
+
+      <!-- Security / Privacy notice -->
+      <div class="flex items-center justify-center gap-1.5 text-[11px] text-clementi-slate/80 text-center pt-0.5">
+        <svg class="w-3 h-3 text-clementi-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clip-rule="evenodd" />
+        </svg>
+        <span>Zero PII storage: Vehicle registration numbers are hashed via HMAC-SHA256.</span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Format vehicle plate to uppercase with standard spacing
+  const plateInput = document.getElementById('vehicle-plate') as HTMLInputElement | null;
+  const dropzone = document.getElementById('receipt-dropzone');
+  const fileInput = document.getElementById('receipt-file-input') as HTMLInputElement | null;
+
+  if (plateInput) {
+    plateInput.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+      target.value = target.value.toUpperCase();
+    });
+  }
+
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', () => {
+      fileInput.click();
+    });
+    dropzone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+  }
+</script>

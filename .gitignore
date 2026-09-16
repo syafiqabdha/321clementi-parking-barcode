@@ -1,7 +1,23 @@
-node_modules/
-.env
-.env.local
+# build output
 dist/
+.astro/
 .temp/
-.DS_Store
+
+# dependencies
+node_modules/
+
+# logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.production
+.env.local
+
+# system files
+.DS_Store
+Thumbs.db

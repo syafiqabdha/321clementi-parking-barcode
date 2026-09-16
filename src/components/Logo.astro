@@ -1,0 +1,36 @@
+---
+interface Props {
+  width?: number;
+  height?: number;
+  variant?: 'stacked' | 'compact';
+  class?: string;
+}
+
+const {
+  width = 170,
+  height = 170,
+  variant = 'stacked',
+  class: className = '',
+} = Astro.props;
+
+// Design Spec Rule 5.1: Clear space X = 50% of wordmark height (~8-12px padding minimum)
+// Design Spec Rule 5.2: Screen size >= 120px stacked, >= 160px horizontal
+const effectiveWidth = variant === 'compact' ? Math.max(120, width) : Math.max(160, width);
+const effectiveHeight = Math.max(120, height);
+---
+
+<div class={`inline-flex flex-col items-center justify-center p-3 bg-clementi-white rounded-md ${className}`} data-testid="brand-logo-container">
+  <picture class="block">
+    <source srcset="/brand/logo.webp" type="image/webp" />
+    <img
+      src="/brand/logo.png"
+      alt="321 Clementi Logo - Countdown to Excitement"
+      width={effectiveWidth}
+      height={effectiveHeight}
+      loading="eager"
+      decoding="async"
+      class="object-contain max-w-full h-auto transition-transform duration-200"
+      style={`width: ${effectiveWidth}px; height: auto; aspect-ratio: 1 / 1;`}
+    />
+  </picture>
+</div>
