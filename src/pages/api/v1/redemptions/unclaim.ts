@@ -1,31 +1,39 @@
 /**
- * POST /api/v1/redemptions/{id}/unclaim
+ * POST /api/v1/redemptions/unclaim
  * Release an active voucher back to the available pool.
+ * Body: { id: string } plus optional recovery fields.
  * Supports:
  *   - Fast path: X-Claim-Token header (client has localStorage token)
- *   - Recovery path: body { vehicle_plate, receipt_amount, shop_id, reason }
+ *   - Recovery path: body { id, vehicle_plate, receipt_amount, shop_id, reason }
  */
 
 import type { APIRoute } from 'astro';
-import { getDb } from '../../../db/connection';
+import { getDb } from '../../../../db/connection';
 import {
   ATOMIC_UNCLAIM_CTE,
   GET_REDEMPTION_FOR_UNCLAIM,
-} from '../../../db/queries';
-import { normalizeCarPlate, PlateValidationError } from '../../../utils/plate-normalization';
-import { verifyClaimToken } from '../../../utils/crypto';
+} from '../../../../db/queries';
+import { normalizeCarPlate, PlateValidationError } from '../../../../utils/plate-normalization';
+import { verifyClaimToken } from '../../../../utils/crypto';
 import {
   checkUnclaimRateLimit,
   checkUnclaimCooldown,
   getClientIp,
-} from '../../../utils/rate-limiter';
+} from '../../../../utils/rate-limiter';
 
-export const POST: APIRoute = async ({ request, params }) => {
+export const POST: APIRoute = async ({ request }) => {
   try {
-    const redemptionId = params.id;
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // No body
+    }
+
+    const redemptionId = body.id;
     if (!redemptionId) {
       return new Response(
-        JSON.stringify({ success: false, error: 'MISSING_ID', message: 'Redemption ID is required.' }),
+        JSON.stringify({ success: false, error: 'MISSING_ID', message: 'Redemption ID is required in request body.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -93,12 +101,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (!authorized) {
       // Fallback: secondary verification with receipt amount + shop
       recoveryType = 'fallback';
-      let body: any = {};
-      try {
-        body = await request.json();
-      } catch {
-        // No body
-      }
 
       const vehiclePlate = body.vehicle_plate;
       const receiptAmount = body.receipt_amount;

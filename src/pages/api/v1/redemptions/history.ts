@@ -6,10 +6,10 @@
  */
 
 import type { APIRoute } from 'astro';
-import { getDb } from '../../../db/connection';
-import { GET_PLATE_HISTORY_QUERY, INSERT_AUDIT_LOG } from '../../../db/queries';
-import { normalizeCarPlate, PlateValidationError } from '../../../utils/plate-normalization';
-import { checkHistoryRateLimit, checkPlateHistoryScanLimit, getClientIp } from '../../../utils/rate-limiter';
+import { getDb } from '../../../../db/connection';
+import { GET_PLATE_HISTORY_QUERY, INSERT_AUDIT_LOG } from '../../../../db/queries';
+import { normalizeCarPlate, PlateValidationError } from '../../../../utils/plate-normalization';
+import { checkHistoryRateLimit, checkPlateHistoryScanLimit, getClientIp } from '../../../../utils/rate-limiter';
 
 export const GET: APIRoute = async ({ request }) => {
   try {

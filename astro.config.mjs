@@ -8,4 +8,11 @@ export default defineConfig({
       applyBaseStyles: false,
     }),
   ],
+  vite: {
+    build: {
+      rollupOptions: {
+        external: ['bun'],
+      },
+    },
+  },
 });
