@@ -1,13 +1,13 @@
 ---
-// Refined TopAppBar Component from Stitch Blueprint & Brand Spec v1.2
-// Docked sticky top bar with left brand logo, center portal title, and right help trigger.
+// Minimal TopAppBar Component
+// Displays only the 321 Clementi logo on the left.
 ---
 
 <header
   class="w-full bg-clementi-white border-b border-clementi-border sticky top-1.5 z-40 shadow-xs"
   role="banner"
 >
-  <div class="w-full max-w-md mx-auto flex items-center justify-between px-4 py-2.5 gap-2">
+  <div class="w-full max-w-md mx-auto flex items-center px-4 py-2.5">
     <!-- Left: Official 321 Clementi Logo -->
     <a href="/" class="flex items-center shrink-0" aria-label="321 Clementi Home">
       <img
@@ -19,24 +19,6 @@
         loading="eager"
       />
     </a>
-
-    <!-- Center: Official Portal Wordmark Lockup -->
-    <div class="flex-1 text-center px-1">
-      <h1 class="font-display font-bold text-clementi-crimson text-xs sm:text-[13px] uppercase tracking-wider leading-tight">
-        Free 2-Hour Parking Redemption Portal
-      </h1>
-    </div>
-
-    <!-- Right: Contextual Assistance Trigger -->
-    <div class="flex items-center shrink-0">
-      <a
-        href="#terms-section"
-        id="header-help-button"
-        aria-label="Carpark Assistance & Promotion Terms"
-        class="w-8 h-8 flex items-center justify-center rounded-full text-clementi-slate hover:bg-slate-100 hover:text-clementi-crimson active:scale-95 transition-all duration-150"
-      >
-        <span class="material-symbols-outlined text-xl">help_outline</span>
-      </a>
-    </div>
+    <h1 class="sr-only">Free 2 hours Parking Redemption</h1>
   </div>
 </header>
