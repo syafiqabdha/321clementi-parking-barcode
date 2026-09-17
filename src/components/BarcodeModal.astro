@@ -1,6 +1,7 @@
 ---
 // Enlargeable High-Contrast Barcode Modal
 // Accessible, WCAG AAA compliant (pure black on pure white), tap/click or Escape to dismiss
+// Supports Screen Wake Lock API (ADR-001 §6.6.2) to prevent display sleep at gantry reader
 ---
 
 <div
@@ -9,6 +10,7 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="enlarge-modal-title"
+  data-wake-lock="screen"
 >
   <div
     class="bg-white rounded-2xl p-6 max-w-sm sm:max-w-md w-full text-center shadow-2xl border-4 border-slate-900 space-y-4"
@@ -32,10 +34,21 @@
       </button>
     </div>
 
+    <!-- Wake Lock Active Indicator (ADR-001 §6.6.2) -->
+    <div
+      id="enlarge-wake-lock-badge"
+      class="hidden inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium px-2.5 py-1 rounded-full mx-auto"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>Screen Stay-Awake Active</span>
+    </div>
+
     <!-- Instructions Callout -->
     <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900 flex items-center gap-2 text-left">
       <span class="material-symbols-outlined text-amber-600 text-base shrink-0">wb_sunny</span>
-      <span class="font-medium">Turn phone brightness to 100% for fastest laser scan.</span>
+      <span class="font-medium">Turn phone brightness to 100% for fastest laser scan. Screen will stay awake while open.</span>
     </div>
 
     <!-- Vehicle Plate Tag -->

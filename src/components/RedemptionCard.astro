@@ -434,6 +434,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const enlargeBarcodeSvg = document.getElementById('enlarge-barcode-svg') as SVGSVGElement;
   const enlargeBarcodeText = document.getElementById('enlarge-barcode-text') as HTMLElement;
   const enlargeModalPlate = document.getElementById('enlarge-modal-plate') as HTMLElement;
+  const wakeLockBadge = document.getElementById('enlarge-wake-lock-badge') as HTMLElement;
 
   // DOM Elements - Claim History Drawer
   const historyModal = document.getElementById('claim-history-modal') as HTMLElement;
@@ -460,6 +461,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   let currentPlate: string = '';
   let currentRedemptionId: string = '';
   let pendingUnclaimRecord: ClaimHistoryRecord | null = null;
+  let wakeLockSentinel: WakeLockSentinel | null = null;
 
   // Initialize Shops Directory
   async function initShops() {
@@ -753,15 +755,52 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   resetBtn?.addEventListener('click', () => {
     if (countdownTimerId) clearInterval(countdownTimerId);
+    closeEnlargeModal();
     barcodeSection.classList.add('hidden');
     formSection.classList.remove('hidden');
     hideError();
   });
 
   // ============================================================================
-  // 4. CLICK-TO-ENLARGE BARCODE MODAL (PAN-75 Scope 4)
+  // 4. CLICK-TO-ENLARGE BARCODE MODAL (PAN-75 Scope 4 / PAN-82 Wake Lock)
   // Opens large high-contrast modal view; tap to dismiss; Escape to close.
+  // Holds Screen Wake Lock (ADR-001 §6.6.2) to prevent display sleep at gantry.
   // ============================================================================
+  async function acquireWakeLock() {
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) {
+      return;
+    }
+    if (wakeLockSentinel && !wakeLockSentinel.released) {
+      return;
+    }
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      if (wakeLockBadge) wakeLockBadge.classList.remove('hidden');
+
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null;
+        if (wakeLockBadge) wakeLockBadge.classList.add('hidden');
+      });
+    } catch {
+      // Screen Wake Lock is optional; catch silently if denied or unsupported
+      wakeLockSentinel = null;
+      if (wakeLockBadge) wakeLockBadge.classList.add('hidden');
+    }
+  }
+
+  async function releaseWakeLock() {
+    if (wakeLockSentinel) {
+      try {
+        await wakeLockSentinel.release();
+      } catch {
+        // Ignore errors during release
+      } finally {
+        wakeLockSentinel = null;
+        if (wakeLockBadge) wakeLockBadge.classList.add('hidden');
+      }
+    }
+  }
+
   function openEnlargeModal(code: string, plate: string) {
     if (!enlargeModal) return;
     enlargeModalPlate.textContent = plate;
@@ -783,12 +822,18 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
     enlargeModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+
+    // Screen Wake Lock on open (ADR-001 §6.6.2)
+    acquireWakeLock();
   }
 
   function closeEnlargeModal() {
     if (!enlargeModal) return;
     enlargeModal.classList.add('hidden');
     document.body.style.overflow = '';
+
+    // Release Screen Wake Lock on every close path (backdrop tap, close button, Escape)
+    releaseWakeLock();
   }
 
   barcodeBoxTrigger?.addEventListener('click', () => {
@@ -802,6 +847,13 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   enlargeModal?.addEventListener('click', (e) => {
     if (e.target === enlargeModal) closeEnlargeModal();
+  });
+
+  // Re-acquire Screen Wake Lock on visibilitychange if modal remains open
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && enlargeModal && !enlargeModal.classList.contains('hidden')) {
+      acquireWakeLock();
+    }
   });
 
   // ============================================================================
