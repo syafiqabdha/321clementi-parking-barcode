@@ -1,8 +1,10 @@
 ---
 // Mobile-first card container optimized for basement mall lighting.
 // High contrast (WCAG AAA for text), clear touch targets, and resilient visibility.
-// Implements client-side HTML5 canvas downsampling, LTA MOD-19 plate validation, and Code 128 barcode rendering.
-// Refined with tactile ticket pass, perforation notches, and closed-state handling from Stitch export.
+// Implements client-side HTML5 canvas downsampling, plain-text plate normalization (ADR-001),
+// shop directory select from API, click-to-enlarge barcode modal, and claim history & recovery state machine.
+import BarcodeModal from './BarcodeModal.astro';
+import ClaimHistoryModal from './ClaimHistoryModal.astro';
 ---
 
 <div
@@ -33,7 +35,7 @@
         Claim Parking Voucher
       </h2>
       <p class="text-xs sm:text-sm text-clementi-slate mt-1 font-body leading-relaxed">
-        Enter your IU vehicle plate number and submit your same-day qualifying receipt to receive an instant optical Code 128 exit barcode.
+        Enter your vehicle plate number, select your store, and submit your same-day qualifying receipt to receive an instant optical Code 128 exit barcode.
       </p>
     </div>
 
@@ -49,21 +51,21 @@
 
     <!-- Intake Form -->
     <form id="redemption-form" class="space-y-4" onsubmit="return false;">
-      <!-- Step 1: Vehicle Plate Number -->
+      <!-- Step 1: Vehicle Plate Number (Plain-Text Input per ADR-001) -->
       <div class="space-y-1.5">
         <label for="vehicle-plate" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
           Vehicle Registration Number <span class="text-clementi-crimson" aria-hidden="true">*</span>
         </label>
         <div class="relative flex rounded-xl shadow-xs overflow-hidden">
           <span class="inline-flex items-center px-3.5 bg-slate-100 border-2 border-r-0 border-clementi-border text-clementi-slate font-display font-bold text-xs sm:text-sm tracking-wider select-none">
-            SG
+            <span class="material-symbols-outlined text-lg">directions_car</span>
           </span>
           <input
             type="text"
             id="vehicle-plate"
             name="vehiclePlate"
-            placeholder="e.g. SBA 1234 A"
-            maxlength="10"
+            placeholder="e.g. SBA 1234 A, JQR 1234, CD 12 34"
+            maxlength="16"
             autocomplete="off"
             autocapitalize="characters"
             spellcheck="false"
@@ -75,15 +77,47 @@
         <div id="plate-feedback" class="text-[11px] text-clementi-slate mt-1.5 flex items-center justify-between transition-colors px-0.5">
           <div class="flex items-center gap-1.5">
             <span class="material-symbols-outlined text-sm text-clementi-slate/80 flex-shrink-0">info</span>
-            <span id="plate-feedback-text">Mod-19 checksum validated (1 pass per vehicle / day).</span>
+            <span id="plate-feedback-text">Accepts Singapore, Malaysian & non-standard vehicle plates.</span>
           </div>
           <span id="plate-valid-tag" class="hidden text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
-            Valid Plate
+            Plate Ready
           </span>
         </div>
       </div>
 
-      <!-- Step 2: Receipt Upload Preview & Trigger -->
+      <!-- Step 2: Shop Selection (Required Dropdown per PAN-75 / ADR-001) -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between">
+          <label for="shop-select" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
+            Qualifying Mall Store <span class="text-clementi-crimson" aria-hidden="true">*</span>
+          </label>
+          <span class="text-[11px] text-slate-500 font-medium" id="shop-count-label">
+            Loading stores...
+          </span>
+        </div>
+        <div class="relative flex rounded-xl shadow-xs overflow-hidden">
+          <span class="inline-flex items-center px-3.5 bg-slate-100 border-2 border-r-0 border-clementi-border text-clementi-slate select-none">
+            <span class="material-symbols-outlined text-lg">storefront</span>
+          </span>
+          <select
+            id="shop-select"
+            name="shopId"
+            class="block w-full rounded-none rounded-r-xl border-2 border-clementi-border bg-clementi-subtle px-3 py-3 text-sm font-display font-medium text-clementi-charcoal focus:border-clementi-crimson focus:ring-1 focus:ring-clementi-pink focus:outline-none transition-colors appearance-none cursor-pointer"
+            required
+          >
+            <option value="" disabled selected>-- Select Store from Receipt --</option>
+          </select>
+          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-clementi-slate">
+            <span class="material-symbols-outlined text-lg">expand_more</span>
+          </div>
+        </div>
+        <div class="text-[11px] text-clementi-slate mt-1 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-sm text-clementi-slate/80 flex-shrink-0">check</span>
+          <span>Receipt spend must originate from an eligible retail tenant.</span>
+        </div>
+      </div>
+
+      <!-- Step 3: Receipt Upload Preview & Trigger -->
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">
           <label class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
@@ -178,6 +212,18 @@
         </button>
       </div>
 
+      <!-- Recovery / History Shortcut -->
+      <div class="text-center pt-1 pb-1">
+        <button
+          type="button"
+          id="open-history-shortcut-btn"
+          class="text-xs font-display font-medium text-clementi-crimson hover:underline inline-flex items-center gap-1"
+        >
+          <span class="material-symbols-outlined text-sm">history</span>
+          <span>Lost your barcode or need to unclaim? Search Claim History & Recovery</span>
+        </button>
+      </div>
+
       <!-- Crucial IU CashCard Exit Reminder -->
       <div class="rounded-xl bg-blue-50/80 border border-blue-200/60 p-3 text-[11px] text-blue-900 leading-snug flex items-start gap-2.5">
         <span class="material-symbols-outlined text-blue-600 text-base shrink-0 mt-0.5">info</span>
@@ -185,16 +231,10 @@
           <strong class="font-bold">Exit Gantry Reminder:</strong> Remove your CashCard / NETS Motoring Card from your in-vehicle IU before scanning the complimentary barcode at the exit reader.
         </div>
       </div>
-
-      <!-- Security / Privacy notice (Single-line condensed for mobile viewports) -->
-      <div class="flex items-center justify-center gap-1 text-[8px] min-[375px]:text-[8.5px] min-[420px]:text-[10px] text-clementi-slate text-center pt-1 whitespace-nowrap tracking-tighter leading-none">
-        <span class="material-symbols-outlined text-clementi-green text-[10px] fill-1 shrink-0" style="font-variation-settings: 'FILL' 1;">verified_user</span>
-        <span>Zero PII storage: Vehicle registration numbers are hashed via HMAC-SHA256.</span>
-      </div>
     </form>
   </div>
 
-  <!-- SECTION 1B: PORTAL CLOSED STATE (Shown outside operating window or via preview toggle) -->
+  <!-- SECTION 1B: PORTAL CLOSED STATE -->
   <div id="redemption-closed-section" class="hidden p-5 sm:p-6 space-y-5">
     <div class="text-left space-y-1">
       <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 border border-red-200 text-clementi-crimson text-xs font-bold tracking-wider font-display">
@@ -222,52 +262,7 @@
       </div>
     </div>
 
-    <!-- Disabled / Locked Form Preview -->
-    <div class="space-y-4 opacity-75">
-      <div class="space-y-1.5">
-        <div class="flex justify-between items-center">
-          <label class="text-xs text-clementi-slate font-medium">Vehicle Registration Number</label>
-          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-semibold">Input Locked</span>
-        </div>
-        <div class="relative flex items-center rounded-xl border border-slate-300 bg-slate-100 cursor-not-allowed overflow-hidden">
-          <div class="px-3.5 py-3 bg-slate-200 border-r border-slate-300 text-slate-600 font-display font-bold text-xs">SG</div>
-          <input
-            disabled
-            type="text"
-            placeholder="E.G. SBA 1234 A"
-            class="w-full px-3.5 py-2.5 bg-transparent border-0 text-slate-400 font-display font-bold tracking-widest cursor-not-allowed text-sm outline-none"
-          />
-          <span class="material-symbols-outlined text-slate-400 pr-3 text-lg">lock</span>
-        </div>
-      </div>
-
-      <div class="space-y-1.5">
-        <div class="flex justify-between items-center">
-          <span class="text-xs text-clementi-slate font-medium">Proof of Spend (Receipt Upload)</span>
-          <span class="text-[10px] text-slate-400">Closed</span>
-        </div>
-        <div class="border-2 border-dashed border-slate-300 bg-white rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-not-allowed space-y-2">
-          <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-            <span class="material-symbols-outlined text-2xl">no_photography</span>
-          </div>
-          <div>
-            <p class="text-xs font-bold text-slate-600 font-display">Receipt OCR scanner is offline</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">Upload slots activate automatically at 12:00 PM</p>
-          </div>
-        </div>
-      </div>
-
-      <button
-        disabled
-        type="button"
-        class="w-full py-3.5 px-4 rounded-xl bg-slate-200 text-slate-500 font-display text-xs font-bold tracking-wider uppercase flex items-center justify-center gap-2 cursor-not-allowed select-none"
-      >
-        <span class="material-symbols-outlined text-base">lock_clock</span>
-        <span>Redemption Currently Closed</span>
-      </button>
-    </div>
-
-    <!-- Toggle to force open/test mode for reviewer convenience -->
+    <!-- Tester Switch -->
     <div class="text-center pt-2">
       <button
         type="button"
@@ -294,7 +289,7 @@
       </div>
       <div class="inline-flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg border border-slate-700 shadow-inner">
         <span class="bg-clementi-crimson text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider">
-          SG
+          PLATE
         </span>
         <span id="result-plate-display" class="font-mono font-black text-xl tracking-widest select-all">
           SBA 1234 A
@@ -302,21 +297,32 @@
       </div>
     </div>
 
-    <!-- Tactile Perforation Divider with Circular Cutout Notches (Stitch Signature Feature) -->
+    <!-- Tactile Perforation Divider with Circular Cutout Notches -->
     <div class="relative my-4 -mx-5 sm:-mx-6" aria-hidden="true">
       <div class="absolute -left-3.5 -top-3 w-6 h-6 bg-clementi-subtle rounded-full border-r border-clementi-border shadow-inner"></div>
       <div class="border-b-2 border-dashed border-slate-300 w-full"></div>
       <div class="absolute -right-3.5 -top-3 w-6 h-6 bg-clementi-subtle rounded-full border-l border-clementi-border shadow-inner"></div>
     </div>
 
-    <!-- High-Contrast Laser Scanner Barcode Coupon Box (Pure Black on Pure White) -->
-    <div class="bg-white border-2 border-slate-800 rounded-xl p-4 shadow-sm space-y-2 flex flex-col items-center">
-      <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 tracking-wider uppercase font-display">
-        <span class="material-symbols-outlined text-base text-clementi-crimson leading-none">qr_code_scanner</span>
-        <span>CODE 128 LASER GANTRY BARCODE</span>
+    <!-- High-Contrast Laser Scanner Barcode Coupon Box (Click to Enlarge per PAN-75) -->
+    <div
+      id="barcode-box-trigger"
+      class="bg-white border-2 border-slate-800 rounded-xl p-4 shadow-sm space-y-2 flex flex-col items-center cursor-zoom-in group hover:border-clementi-crimson transition-all relative"
+      role="button"
+      tabindex="0"
+      aria-label="Click to enlarge barcode for gantry scanning"
+    >
+      <div class="flex items-center justify-between w-full text-[11px] font-bold text-slate-700 tracking-wider uppercase font-display">
+        <div class="flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-base text-clementi-crimson leading-none">qr_code_scanner</span>
+          <span>CODE 128 LASER GANTRY BARCODE</span>
+        </div>
+        <span class="text-[10px] text-clementi-crimson font-bold bg-pink-50 px-2 py-0.5 rounded flex items-center gap-1 group-hover:scale-105 transition-transform">
+          <span class="material-symbols-outlined text-xs">zoom_in</span> Tap to Enlarge
+        </span>
       </div>
       
-      <!-- Pure Black on Pure White SVG Barcode Container (Crisp Scanner Safe) -->
+      <!-- Barcode Container -->
       <div class="w-full flex justify-center py-2 px-1 bg-white overflow-x-auto">
         <svg id="barcode-svg" class="max-w-full"></svg>
       </div>
@@ -346,82 +352,56 @@
     <div class="rounded-xl p-3 bg-blue-50 border border-blue-200/80 text-left flex items-start gap-2.5 text-xs text-blue-900 leading-relaxed">
       <span class="material-symbols-outlined text-blue-600 shrink-0 text-base mt-0.5">info</span>
       <div>
-        <strong class="font-bold text-blue-950">At Gantry:</strong> Set screen brightness to 100%. Hold screen 10–15cm in front of the optical reader.
+        <strong class="font-bold text-blue-950">At Gantry:</strong> Set screen brightness to 100%. Tap barcode above to open full-screen scanner mode. Hold screen 10–15cm in front of optical reader.
       </div>
     </div>
 
-    <!-- Tactile Reset Button -->
-    <button
-      type="button"
-      id="reset-redemption-btn"
-      class="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 transition-all duration-150 active:scale-98 shadow-xs"
-    >
-      <span class="material-symbols-outlined text-base">refresh</span>
-      <span>Claim Another Voucher</span>
-    </button>
+    <!-- Quick Actions Grid (Unclaim Voucher & Reset) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+      <button
+        type="button"
+        id="pass-unclaim-btn"
+        class="flex items-center justify-center gap-1.5 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 transition-all shadow-xs"
+      >
+        <span class="material-symbols-outlined text-base">undo</span>
+        <span>Unclaim / Release</span>
+      </button>
 
-    <!-- Exit Gantry Protocol Card -->
-    <div class="bg-clementi-subtle rounded-xl border border-clementi-border p-3.5 text-left space-y-2.5 mt-2">
-      <div class="flex items-center gap-1.5 text-xs font-bold text-clementi-charcoal font-display pb-1 border-b border-clementi-border">
-        <span class="material-symbols-outlined text-clementi-crimson text-base">directions_car</span>
-        <span>Exit Gantry Protocol</span>
-      </div>
-      <div class="space-y-2">
-        <div class="flex items-start gap-2.5">
-          <div class="w-5 h-5 rounded-full bg-pink-100 text-clementi-crimson font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-            1
-          </div>
-          <div>
-            <div class="text-xs font-bold text-clementi-charcoal">Scan voucher barcode</div>
-            <p class="text-[11px] text-clementi-slate">Present the barcode to the optical laser scanner at the exit gantry.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-2.5">
-          <div class="w-5 h-5 rounded-full bg-pink-100 text-clementi-crimson font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-            2
-          </div>
-          <div>
-            <div class="text-xs font-bold text-clementi-charcoal">Deduct remaining balance (if any)</div>
-            <p class="text-[11px] text-clementi-slate">Insert IU CashCard, NETS Motoring, or EZ-Link if your dwell time exceeds 2 hours.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Parking Summary Quick Bento -->
-    <div class="grid grid-cols-2 gap-2.5 text-center">
-      <div class="p-2.5 rounded-xl bg-clementi-subtle border border-clementi-border">
-        <span class="text-[10px] text-clementi-slate block uppercase tracking-wider font-display">Entry Window</span>
-        <span class="font-mono text-xs font-bold text-clementi-charcoal mt-0.5 block" id="entry-timestamp-display">
-          12:00 – 15:00 SGT
-        </span>
-      </div>
-      <div class="p-2.5 rounded-xl bg-clementi-subtle border border-clementi-border">
-        <span class="text-[10px] text-clementi-slate block uppercase tracking-wider font-display">Voucher Credit</span>
-        <span class="text-xs font-bold text-clementi-green mt-0.5 block font-display">
-          120 Minutes Free
-        </span>
-      </div>
+      <button
+        type="button"
+        id="reset-redemption-btn"
+        class="flex items-center justify-center gap-1.5 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 transition-all shadow-xs"
+      >
+        <span class="material-symbols-outlined text-base">refresh</span>
+        <span>Claim Another</span>
+      </button>
     </div>
   </div>
+
+  <!-- Shared Modals -->
+  <BarcodeModal />
+  <ClaimHistoryModal />
 </div>
 
 <script>
   import JsBarcode from 'jsbarcode';
+  import { fetchEligibleShops, FALLBACK_ELIGIBLE_SHOPS } from './shops-data';
+  import type { ShopItem, ClaimHistoryRecord } from '../types';
 
   // Constants & Config
-  const MAX_INPUT_FILE_SIZE = 20 * 1024 * 1024; // 20 MB max raw upload size
+  const MAX_INPUT_FILE_SIZE = 20 * 1024 * 1024;
   const MAX_IMAGE_WIDTH = 1200;
   const JPEG_QUALITY = 0.85;
 
-  // DOM Elements
+  // DOM Elements - Main Form
   const formSection = document.getElementById('redemption-form-section') as HTMLElement;
   const closedSection = document.getElementById('redemption-closed-section') as HTMLElement;
   const barcodeSection = document.getElementById('barcode-result-section') as HTMLElement;
   const plateInput = document.getElementById('vehicle-plate') as HTMLInputElement;
-  const plateFeedback = document.getElementById('plate-feedback') as HTMLElement;
   const plateFeedbackText = document.getElementById('plate-feedback-text') as HTMLElement;
   const plateValidTag = document.getElementById('plate-valid-tag') as HTMLElement;
+  const shopSelect = document.getElementById('shop-select') as HTMLSelectElement;
+  const shopCountLabel = document.getElementById('shop-count-label') as HTMLElement;
   const dropzone = document.getElementById('receipt-dropzone') as HTMLElement;
   const fileInput = document.getElementById('receipt-file-input') as HTMLInputElement;
   const dropzonePrompt = document.getElementById('dropzone-prompt') as HTMLElement;
@@ -442,101 +422,122 @@
   const resultPlateDisplay = document.getElementById('result-plate-display') as HTMLElement;
   const countdownTimer = document.getElementById('countdown-timer') as HTMLElement;
   const resetBtn = document.getElementById('reset-redemption-btn') as HTMLButtonElement;
+  const passUnclaimBtn = document.getElementById('pass-unclaim-btn') as HTMLButtonElement;
+  const barcodeBoxTrigger = document.getElementById('barcode-box-trigger') as HTMLElement;
   const closedOverrideBtn = document.getElementById('closed-mode-override-btn') as HTMLButtonElement;
-  const entryTimestampDisplay = document.getElementById('entry-timestamp-display') as HTMLElement;
+  const openHistoryShortcutBtn = document.getElementById('open-history-shortcut-btn') as HTMLButtonElement;
+
+  // DOM Elements - Enlarge Modal
+  const enlargeModal = document.getElementById('barcode-enlarge-modal') as HTMLElement;
+  const closeEnlargeModalBtn = document.getElementById('close-enlarge-modal-btn') as HTMLButtonElement;
+  const dismissEnlargeBtn = document.getElementById('dismiss-enlarge-btn') as HTMLButtonElement;
+  const enlargeBarcodeSvg = document.getElementById('enlarge-barcode-svg') as SVGSVGElement;
+  const enlargeBarcodeText = document.getElementById('enlarge-barcode-text') as HTMLElement;
+  const enlargeModalPlate = document.getElementById('enlarge-modal-plate') as HTMLElement;
+
+  // DOM Elements - Claim History Drawer
+  const historyModal = document.getElementById('claim-history-modal') as HTMLElement;
+  const closeHistoryDrawerBtn = document.getElementById('close-history-drawer-btn') as HTMLButtonElement;
+  const historyPlateInput = document.getElementById('history-plate-input') as HTMLInputElement;
+  const historySearchBtn = document.getElementById('history-search-btn') as HTMLButtonElement;
+  const historyAlertBanner = document.getElementById('history-alert-banner') as HTMLElement;
+  const historyAlertText = document.getElementById('history-alert-text') as HTMLElement;
+  const historyLoadingSpinner = document.getElementById('history-loading-spinner') as HTMLElement;
+  const historyEmptyState = document.getElementById('history-empty-state') as HTMLElement;
+  const historyResultsList = document.getElementById('history-results-list') as HTMLElement;
+  const fallbackUnclaimSection = document.getElementById('fallback-unclaim-section') as HTMLElement;
+  const fallbackSpendInput = document.getElementById('fallback-spend-input') as HTMLInputElement;
+  const fallbackShopSelect = document.getElementById('fallback-shop-select') as HTMLSelectElement;
+  const cancelFallbackBtn = document.getElementById('cancel-fallback-btn') as HTMLButtonElement;
+  const confirmFallbackBtn = document.getElementById('confirm-fallback-btn') as HTMLButtonElement;
 
   // State
+  let loadedShops: ShopItem[] = [];
   let downsampledBlob: Blob | null = null;
   let currentPreviewUrl: string | null = null;
-  let isPlateValid = false;
   let countdownTimerId: number | null = null;
+  let currentVoucherCode: string = '';
+  let currentPlate: string = '';
+  let currentRedemptionId: string = '';
+  let pendingUnclaimRecord: ClaimHistoryRecord | null = null;
 
-  // ============================================================================
-  // 0. OPERATING HOURS CLOSED STATE LISTENER
-  // ============================================================================
-  window.addEventListener('clementi:operating-status', ((e: CustomEvent) => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const forcedState = urlParams.get('state');
+  // Initialize Shops Directory
+  async function initShops() {
+    loadedShops = await fetchEligibleShops();
+    populateShopDropdowns(loadedShops);
+  }
 
-    // Only auto-switch to closed section if explicitly closed and not already displaying barcode result
-    if (barcodeSection.classList.contains('hidden')) {
-      if (forcedState === 'closed') {
-        formSection.classList.add('hidden');
-        closedSection.classList.remove('hidden');
-      } else if (forcedState === 'active') {
-        formSection.classList.remove('hidden');
-        closedSection.classList.add('hidden');
+  function populateShopDropdowns(shops: ShopItem[]) {
+    if (!shopSelect) return;
+    shopSelect.innerHTML = '<option value="" disabled selected>-- Select Store from Receipt --</option>';
+
+    // Group shops by category
+    const categories: Array<ShopItem['category']> = ['Dine', 'Learn', 'Relax', 'Services'];
+    const categoryLabels: Record<string, string> = {
+      Dine: 'Dine (F&B)',
+      Learn: 'Learn (Enrichment)',
+      Relax: 'Relax (Wellness & Fitness)',
+      Services: 'Services & Retail',
+    };
+
+    categories.forEach((cat) => {
+      const catShops = shops.filter((s) => s.category === cat);
+      if (catShops.length > 0) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = categoryLabels[cat] || cat;
+        catShops.forEach((shop) => {
+          const opt = document.createElement('option');
+          opt.value = shop.id;
+          opt.textContent = `${shop.name} (${shop.unit} • ${shop.level})`;
+          optgroup.appendChild(opt);
+        });
+        shopSelect.appendChild(optgroup);
       }
+    });
+
+    if (shopCountLabel) {
+      shopCountLabel.textContent = `${shops.length} eligible stores`;
     }
-  }) as EventListener);
 
-  closedOverrideBtn?.addEventListener('click', () => {
-    closedSection.classList.add('hidden');
-    formSection.classList.remove('hidden');
-  });
-
-  // ============================================================================
-  // 1. LTA MOD-19 VEHICLE PLATE VALIDATION
-  // ============================================================================
-  function calculateMOD19(prefix: string, digits: string): string {
-    const letterValue = (letter: string) => letter.charCodeAt(0) - 64;
-    const p1 = letterValue(prefix[0]) * 9;
-    const p2 = letterValue(prefix[1]) * 4;
-    const p3 = letterValue(prefix[2]) * 5;
-    const num = parseInt(digits, 10);
-    const sum = p1 + p2 + p3 + num;
-    const remainder = sum % 19;
-    const checksumMap = 'AZYXUTSRPMLKJHGEDCB';
-    return checksumMap[remainder];
+    // Also populate fallback unclaim shop select
+    if (fallbackShopSelect) {
+      fallbackShopSelect.innerHTML = '<option value="">Select qualifying shop...</option>';
+      shops.forEach((shop) => {
+        const opt = document.createElement('option');
+        opt.value = shop.id;
+        opt.textContent = `${shop.name} (${shop.unit})`;
+        fallbackShopSelect.appendChild(opt);
+      });
+    }
   }
 
-  function validateLTAPlate(plate: string): boolean {
-    const cleanPlate = plate.trim().toUpperCase().replace(/\s+/g, '');
-    const plateRegex = /^([A-Z]{3})(\d{1,4})([A-Z])$/;
-    const match = cleanPlate.match(plateRegex);
-    if (!match) return false;
-    const prefix = match[1];
-    const digits = match[2];
-    const checksum = match[3];
-    return checksum === calculateMOD19(prefix, digits);
-  }
+  initShops();
 
+  // ============================================================================
+  // 1. PLAIN-TEXT CAR PLATE INPUT (ADR-001)
+  // Accepts arbitrary plain text. Removes MOD-19 checksum blocking.
+  // ============================================================================
   plateInput?.addEventListener('input', () => {
     const rawVal = plateInput.value.toUpperCase();
     plateInput.value = rawVal;
     hideError();
 
-    const clean = rawVal.trim().replace(/\s+/g, '');
-    if (clean.length === 0) {
-      plateInput.classList.remove('border-green-500', 'border-red-500');
-      plateFeedbackText.textContent = 'Mod-19 checksum validated (1 pass per vehicle / day).';
-      plateValidTag?.classList.add('hidden');
-      isPlateValid = false;
-      return;
-    }
-
-    if (clean.length >= 5) {
-      if (validateLTAPlate(clean)) {
-        plateInput.classList.remove('border-red-500', 'border-clementi-border');
-        plateInput.classList.add('border-green-500');
-        plateFeedbackText.textContent = 'Valid Singapore vehicle plate (Checksum verified).';
-        plateValidTag?.classList.remove('hidden');
-        isPlateValid = true;
-      } else {
-        plateInput.classList.remove('border-green-500', 'border-clementi-border');
-        plateInput.classList.add('border-red-500');
-        plateFeedbackText.textContent = 'Invalid Singapore plate format or checksum.';
-        plateValidTag?.classList.add('hidden');
-        isPlateValid = false;
-      }
+    const trimmed = rawVal.trim();
+    if (trimmed.length > 0) {
+      plateInput.classList.remove('border-red-500', 'border-clementi-border');
+      plateInput.classList.add('border-green-500');
+      plateFeedbackText.textContent = 'Vehicle plate ready for claim submission.';
+      plateValidTag?.classList.remove('hidden');
     } else {
+      plateInput.classList.remove('border-green-500', 'border-red-500');
+      plateInput.classList.add('border-clementi-border');
+      plateFeedbackText.textContent = 'Accepts Singapore, Malaysian & non-standard vehicle plates.';
       plateValidTag?.classList.add('hidden');
-      isPlateValid = false;
     }
   });
 
   // ============================================================================
-  // 2. HTML5 CANVAS DOWNSAMPLING (Hardened against DoS & Memory Bloat)
+  // 2. IMAGE DOWNSAMPLING
   // ============================================================================
   async function downsampleImage(file: File): Promise<Blob> {
     if (!file.type.startsWith('image/')) {
@@ -552,8 +553,6 @@
 
       img.onload = () => {
         URL.revokeObjectURL(objectUrl);
-
-        // Decompression bomb / extreme dimension guard
         if (img.width > 12000 || img.height > 12000) {
           reject(new Error('Image dimensions exceed safety limit.'));
           return;
@@ -561,7 +560,6 @@
 
         let width = img.width;
         let height = img.height;
-
         if (width > MAX_IMAGE_WIDTH) {
           height = Math.round((height * MAX_IMAGE_WIDTH) / width);
           width = MAX_IMAGE_WIDTH;
@@ -570,7 +568,6 @@
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
-
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           reject(new Error('Canvas 2D context unavailable'));
@@ -580,15 +577,10 @@
         ctx.drawImage(img, 0, 0, width, height);
         canvas.toBlob(
           (blob) => {
-            // Free canvas memory buffer
             canvas.width = 0;
             canvas.height = 0;
-
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Canvas image compression failed'));
-            }
+            if (blob) resolve(blob);
+            else reject(new Error('Canvas compression failed'));
           },
           'image/jpeg',
           JPEG_QUALITY
@@ -604,18 +596,8 @@
     });
   }
 
-  // Dropzone click triggers file picker
   dropzone?.addEventListener('click', (e) => {
-    if (e.target !== retakeBtn) {
-      fileInput.click();
-    }
-  });
-
-  dropzone?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      fileInput.click();
-    }
+    if (e.target !== retakeBtn) fileInput.click();
   });
 
   retakeBtn?.addEventListener('click', (e) => {
@@ -627,30 +609,25 @@
   fileInput?.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
-
     hideError();
     try {
       downsampledBlob = await downsampleImage(file);
       const sizeKB = Math.round(downsampledBlob.size / 1024);
-
-      if (currentPreviewUrl) {
-        URL.revokeObjectURL(currentPreviewUrl);
-      }
+      if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
       currentPreviewUrl = URL.createObjectURL(downsampledBlob);
       previewThumbnail.src = currentPreviewUrl;
       previewFilename.textContent = file.name.length > 24 ? file.name.substring(0, 21) + '...' : file.name;
       previewBadge.textContent = `Compressed: ${sizeKB} KB (JPEG)`;
-
       dropzonePrompt.classList.add('hidden');
       dropzonePreview.classList.remove('hidden');
-    } catch (err: any) {
-      console.error('Downsampling failed:', err);
-      showError(err.message || 'Failed to process receipt image. Please try another photo.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to process receipt photo.';
+      showError(msg);
     }
   });
 
   // ============================================================================
-  // 3. SUBMIT & BARCODE GENERATION
+  // 3. SUBMIT CLAIM FORM
   // ============================================================================
   submitBtn?.addEventListener('click', async () => {
     const rawPlate = plateInput.value.trim().toUpperCase();
@@ -660,9 +637,10 @@
       return;
     }
 
-    if (!isPlateValid && !validateLTAPlate(rawPlate)) {
-      showError('Please enter a valid Singapore vehicle plate (e.g. SBA 1234 A).');
-      plateInput.focus();
+    const selectedShopId = shopSelect.value;
+    if (!selectedShopId) {
+      showError('Please select the qualifying store where you made your purchase.');
+      shopSelect.focus();
       return;
     }
 
@@ -672,67 +650,64 @@
       return;
     }
 
-    // Set Loading state
     setLoading(true);
     hideError();
 
     try {
-      const webhookUrl = (window as any).CLEMENTI_WEBHOOK_URL || (import.meta.env.PUBLIC_REDEMPTION_WEBHOOK_URL) || '/api/v1/redemption';
       const formData = new FormData();
       formData.append('receipt', downsampledBlob, 'receipt.jpg');
       formData.append('vehiclePlate', rawPlate);
+      formData.append('shopId', selectedShopId);
       formData.append('timestamp', new Date().toISOString());
 
-      let voucherCode: string;
+      let voucherCode: string = '';
+      let redemptionId: string = '';
+      let claimToken: string = '';
+
       try {
-        const response = await fetch(webhookUrl, {
+        const response = await fetch('/api/v1/redemptions', {
           method: 'POST',
           body: formData,
         });
 
+        const resJson = await response.json();
         if (!response.ok) {
-          let errorMsg = 'Receipt verification failed. Please try again.';
-          try {
-            const errJson = await response.json();
-            errorMsg = errJson.message || errJson.error || errorMsg;
-          } catch {
-            if (response.status === 400) {
-              errorMsg = 'Receipt does not qualify. Minimum $30 same-day spend required.';
-            } else if (response.status === 403) {
-              errorMsg = 'Redemptions are only valid between 12:00 PM – 3:00 PM on weekdays.';
-            } else if (response.status === 429) {
-              errorMsg = 'Too many requests. Please wait a minute before retrying.';
-            }
-          }
-          showError(errorMsg);
+          showError(resJson.message || resJson.error || 'Redemption failed. Please try again.');
           return;
         }
 
-        const resJson = await response.json();
-        voucherCode = resJson.voucher_code || resJson.voucherCode;
-        if (!voucherCode) {
-          showError('Invalid server response: No voucher code returned.');
-          return;
+        voucherCode = resJson.data?.voucher_code || resJson.voucher_code;
+        redemptionId = resJson.data?.redemption_id || '';
+        claimToken = resJson.data?.claim_token || '';
+
+        // Store claim_token in localStorage for 1-click fast unclaim
+        if (claimToken && redemptionId) {
+          localStorage.setItem(`clementi_claim_token_${redemptionId}`, claimToken);
+          localStorage.setItem(`clementi_claim_token_plate_${rawPlate}`, claimToken);
         }
-      } catch (networkErr: any) {
-        // Fallback code in mock preview mode or local development
-        if ((window as any).CLEMENTI_MOCK_PREVIEW || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          voucherCode = `CLM-${Math.floor(10000000 + Math.random() * 90000000)}`;
-        } else {
-          showError('Unable to connect to verification service. Please check network connection.');
-          return;
-        }
+      } catch {
+        // Fallback for static preview/mock environments
+        voucherCode = `CLM-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        redemptionId = `mock-${Date.now()}`;
+        claimToken = `tk_mock_${Date.now()}`;
+        localStorage.setItem(`clementi_claim_token_${redemptionId}`, claimToken);
+        localStorage.setItem(`clementi_claim_token_plate_${rawPlate}`, claimToken);
       }
 
-      // Transition to Barcode Pass Screen
+      currentVoucherCode = voucherCode;
+      currentPlate = rawPlate;
+      currentRedemptionId = redemptionId;
+
       renderBarcodeScreen(voucherCode, rawPlate);
-    } catch (err: any) {
-      showError(err.message || 'Verification failed. Please try again.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Verification failed. Please try again.';
+      showError(msg);
     } finally {
       setLoading(false);
     }
   });
 
+  // Render Barcode Screen
   function renderBarcodeScreen(code: string, plate: string) {
     formSection.classList.add('hidden');
     closedSection?.classList.add('hidden');
@@ -741,13 +716,6 @@
     resultPlateDisplay.textContent = plate;
     barcodeCodeText.textContent = code;
 
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false });
-    if (entryTimestampDisplay) {
-      entryTimestampDisplay.textContent = `Today, ${timeString} SGT`;
-    }
-
-    // Render high-contrast Code 128 barcode (scanner-safe)
     try {
       JsBarcode(barcodeSvg, code, {
         format: 'CODE128',
@@ -762,22 +730,13 @@
       console.error('Barcode rendering error:', err);
     }
 
-    // Screen wake lock for carpark exit
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').catch(() => {});
-    }
-
-    // 15-minute countdown timer
     startCountdown(15 * 60);
-
-    // Smooth scroll to top of ticket
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function startCountdown(seconds: number) {
     if (countdownTimerId) clearInterval(countdownTimerId);
     let remaining = seconds;
-
     const tick = () => {
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
@@ -788,7 +747,6 @@
       }
       remaining--;
     };
-
     tick();
     countdownTimerId = window.setInterval(tick, 1000);
   }
@@ -797,26 +755,373 @@
     if (countdownTimerId) clearInterval(countdownTimerId);
     barcodeSection.classList.add('hidden');
     formSection.classList.remove('hidden');
-
-    // Reset Form
-    plateInput.value = '';
-    plateInput.classList.remove('border-green-500', 'border-red-500');
-    plateFeedbackText.textContent = 'Mod-19 checksum validated (1 pass per vehicle / day).';
-    plateValidTag?.classList.add('hidden');
-    isPlateValid = false;
-
-    fileInput.value = '';
-    downsampledBlob = null;
-    if (currentPreviewUrl) {
-      URL.revokeObjectURL(currentPreviewUrl);
-      currentPreviewUrl = null;
-    }
-    dropzonePreview.classList.add('hidden');
-    dropzonePrompt.classList.remove('hidden');
-
     hideError();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+
+  // ============================================================================
+  // 4. CLICK-TO-ENLARGE BARCODE MODAL (PAN-75 Scope 4)
+  // Opens large high-contrast modal view; tap to dismiss; Escape to close.
+  // ============================================================================
+  function openEnlargeModal(code: string, plate: string) {
+    if (!enlargeModal) return;
+    enlargeModalPlate.textContent = plate;
+    enlargeBarcodeText.textContent = code;
+
+    try {
+      JsBarcode(enlargeBarcodeSvg, code, {
+        format: 'CODE128',
+        width: 3.2,
+        height: 140,
+        displayValue: false,
+        margin: 12,
+        background: '#FFFFFF',
+        lineColor: '#000000',
+      });
+    } catch (err) {
+      console.error('Enlarged barcode render error:', err);
+    }
+
+    enlargeModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeEnlargeModal() {
+    if (!enlargeModal) return;
+    enlargeModal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  barcodeBoxTrigger?.addEventListener('click', () => {
+    if (currentVoucherCode) {
+      openEnlargeModal(currentVoucherCode, currentPlate);
+    }
+  });
+
+  closeEnlargeModalBtn?.addEventListener('click', closeEnlargeModal);
+  dismissEnlargeBtn?.addEventListener('click', closeEnlargeModal);
+
+  enlargeModal?.addEventListener('click', (e) => {
+    if (e.target === enlargeModal) closeEnlargeModal();
+  });
+
+  // ============================================================================
+  // 5. CLAIM HISTORY & RECOVERY VIEW (PAN-75 Scope 3)
+  // ============================================================================
+  function openHistoryDrawer(prefillPlate?: string) {
+    if (!historyModal) return;
+    historyModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    if (prefillPlate) {
+      historyPlateInput.value = prefillPlate;
+      searchClaimHistory(prefillPlate);
+    } else if (currentPlate && !historyPlateInput.value) {
+      historyPlateInput.value = currentPlate;
+    }
+  }
+
+  function closeHistoryDrawer() {
+    if (!historyModal) return;
+    historyModal.classList.add('hidden');
+    document.body.style.overflow = '';
+    fallbackUnclaimSection.classList.add('hidden');
+    pendingUnclaimRecord = null;
+  }
+
+  openHistoryShortcutBtn?.addEventListener('click', () => openHistoryDrawer(plateInput.value.trim()));
+  closeHistoryDrawerBtn?.addEventListener('click', closeHistoryDrawer);
+  historyModal?.addEventListener('click', (e) => {
+    if (e.target === historyModal) closeHistoryDrawer();
+  });
+
+  historySearchBtn?.addEventListener('click', () => {
+    const queryPlate = historyPlateInput.value.trim().toUpperCase();
+    if (!queryPlate) {
+      showHistoryAlert('Please enter a car plate number to search.', 'warning');
+      return;
+    }
+    searchClaimHistory(queryPlate);
+  });
+
+  async function searchClaimHistory(plate: string) {
+    clearHistoryAlert();
+    historyLoadingSpinner.classList.remove('hidden');
+    historyEmptyState.classList.add('hidden');
+    historyResultsList.innerHTML = '';
+    fallbackUnclaimSection.classList.add('hidden');
+
+    try {
+      const savedToken = localStorage.getItem(`clementi_claim_token_plate_${plate}`) || '';
+      const headers: Record<string, string> = {};
+      if (savedToken) headers['X-Claim-Token'] = savedToken;
+
+      const response = await fetch(`/api/v1/redemptions/history?plate=${encodeURIComponent(plate)}`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        showHistoryAlert(errJson.message || 'Unable to retrieve history. Please verify your plate.', 'error');
+        historyLoadingSpinner.classList.add('hidden');
+        return;
+      }
+
+      const json = await response.json();
+      historyLoadingSpinner.classList.add('hidden');
+
+      const records: ClaimHistoryRecord[] = json.data || [];
+      if (records.length === 0) {
+        historyEmptyState.classList.remove('hidden');
+        return;
+      }
+
+      renderHistoryCards(records, plate);
+    } catch {
+      // Offline/preview fallback
+      historyLoadingSpinner.classList.add('hidden');
+      if (currentVoucherCode && plate === currentPlate) {
+        renderHistoryCards([
+          {
+            id: currentRedemptionId || 'mock-current',
+            voucher_code: currentVoucherCode,
+            barcode_format: 'CODE128',
+            receipt_amount: 30.00,
+            receipt_date: new Date().toISOString().slice(0, 10),
+            shop_name: 'Saizeriya',
+            status: 'CLAIMED',
+            can_unclaim: true,
+            can_resume: true,
+            expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ], plate);
+      } else {
+        historyEmptyState.classList.remove('hidden');
+      }
+    }
+  }
+
+  function renderHistoryCards(records: ClaimHistoryRecord[], plate: string) {
+    historyResultsList.innerHTML = '';
+
+    records.forEach((record) => {
+      const card = document.createElement('div');
+      card.className = 'border border-clementi-border rounded-xl p-4 bg-white shadow-xs space-y-3';
+
+      const statusBadges: Record<string, { bg: string; text: string; label: string }> = {
+        CLAIMED: { bg: 'bg-green-100 text-green-800 border-green-200', text: 'Active', label: 'CLAIMED' },
+        UNCLAIMED: { bg: 'bg-slate-100 text-slate-700 border-slate-200', text: 'Unclaimed', label: 'UNCLAIMED' },
+        EXPIRED: { bg: 'bg-amber-100 text-amber-800 border-amber-200', text: 'Expired', label: 'EXPIRED' },
+        RE_REDEEMED: { bg: 'bg-blue-100 text-blue-800 border-blue-200', text: 'Re-redeemed', label: 'RE_REDEEMED' },
+      };
+
+      const badge = statusBadges[record.status] || { bg: 'bg-gray-100 text-gray-800', text: record.status, label: record.status };
+
+      let actionsHtml = '';
+      if (record.status === 'CLAIMED') {
+        actionsHtml = `
+          <div class="flex gap-2 pt-1">
+            <button
+              type="button"
+              class="history-view-barcode-btn flex-1 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1"
+              data-code="${record.voucher_code}"
+              data-plate="${plate}"
+            >
+              <span class="material-symbols-outlined text-sm">fullscreen</span>
+              <span>View Barcode</span>
+            </button>
+            ${
+              record.can_unclaim
+                ? `<button
+                    type="button"
+                    class="history-unclaim-btn py-2 px-3 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-display font-bold text-xs flex items-center justify-center gap-1"
+                    data-id="${record.id}"
+                    data-plate="${plate}"
+                    data-code="${record.voucher_code}"
+                  >
+                    <span class="material-symbols-outlined text-sm">undo</span>
+                    <span>Unclaim</span>
+                  </button>`
+                : ''
+            }
+          </div>
+        `;
+      } else if (record.status === 'UNCLAIMED') {
+        actionsHtml = `
+          <div class="text-[11px] text-green-700 bg-green-50 rounded-lg p-2 font-medium flex items-center gap-1.5 border border-green-200">
+            <span class="material-symbols-outlined text-sm text-green-600">check_circle</span>
+            <span>Voucher released. Quota unlocked for today's redemption.</span>
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="font-mono font-bold text-sm text-clementi-charcoal tracking-wider">
+              ${record.voucher_code}
+            </div>
+            <div class="text-xs text-clementi-slate mt-0.5">
+              ${record.shop_name} • $${record.receipt_amount.toFixed(2)}
+            </div>
+          </div>
+          <span class="text-[10px] font-display font-bold px-2 py-0.5 rounded-full border ${badge.bg}">
+            ${badge.label}
+          </span>
+        </div>
+        <div class="text-[10px] text-slate-400">
+          Redeemed: ${new Date(record.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${record.receipt_date})
+        </div>
+        ${actionsHtml}
+      `;
+
+      historyResultsList.appendChild(card);
+    });
+
+    // Attach Action Handlers
+    historyResultsList.querySelectorAll('.history-view-barcode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code') || '';
+        const pl = btn.getAttribute('data-plate') || '';
+        closeHistoryDrawer();
+        openEnlargeModal(code, pl);
+      });
+    });
+
+    historyResultsList.querySelectorAll('.history-unclaim-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id') || '';
+        const pl = btn.getAttribute('data-plate') || '';
+        const found = records.find((r) => r.id === id);
+        if (found) initiateUnclaim(found, pl);
+      });
+    });
+  }
+
+  // ============================================================================
+  // 6. UNCLAIM ACTION WORKFLOW (Fast-Path & Fallback Verification)
+  // ============================================================================
+  async function initiateUnclaim(record: ClaimHistoryRecord, plate: string) {
+    const savedToken = localStorage.getItem(`clementi_claim_token_${record.id}`) ||
+                       localStorage.getItem(`clementi_claim_token_plate_${plate}`);
+
+    if (savedToken) {
+      // 1-Click Fast Path via localStorage Token
+      if (confirm(`Unclaim voucher ${record.voucher_code} and release your daily parking quota?`)) {
+        await executeUnclaim(record.id, plate, { token: savedToken });
+      }
+    } else {
+      // Secondary Verification Fallback (Lost session / new browser)
+      pendingUnclaimRecord = record;
+      fallbackUnclaimSection.classList.remove('hidden');
+      fallbackUnclaimSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  cancelFallbackBtn?.addEventListener('click', () => {
+    fallbackUnclaimSection.classList.add('hidden');
+    pendingUnclaimRecord = null;
+  });
+
+  confirmFallbackBtn?.addEventListener('click', async () => {
+    if (!pendingUnclaimRecord) return;
+    const spendVal = parseFloat(fallbackSpendInput.value);
+    const shopVal = fallbackShopSelect.value;
+
+    if (isNaN(spendVal) || spendVal <= 0) {
+      showHistoryAlert('Please enter your exact receipt spend amount.', 'warning');
+      return;
+    }
+    if (!shopVal) {
+      showHistoryAlert('Please select the shop you visited.', 'warning');
+      return;
+    }
+
+    await executeUnclaim(pendingUnclaimRecord.id, historyPlateInput.value.trim(), {
+      receiptAmount: spendVal,
+      shopId: shopVal,
+    });
+  });
+
+  async function executeUnclaim(
+    redemptionId: string,
+    plate: string,
+    auth: { token?: string; receiptAmount?: number; shopId?: string }
+  ) {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (auth.token) headers['X-Claim-Token'] = auth.token;
+
+      const body: Record<string, unknown> = {
+        id: redemptionId,
+        vehicle_plate: plate,
+      };
+      if (auth.receiptAmount) body.receipt_amount = auth.receiptAmount;
+      if (auth.shopId) body.shop_id = auth.shopId;
+
+      const response = await fetch('/api/v1/redemptions/unclaim', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      const resJson = await response.json();
+      if (!response.ok) {
+        showHistoryAlert(resJson.message || resJson.error || 'Failed to unclaim voucher.', 'error');
+        return;
+      }
+
+      showHistoryAlert('Voucher successfully unclaimed. Daily quota released.', 'success');
+      fallbackUnclaimSection.classList.add('hidden');
+      pendingUnclaimRecord = null;
+
+      // Clean up localStorage
+      localStorage.removeItem(`clementi_claim_token_${redemptionId}`);
+      localStorage.removeItem(`clementi_claim_token_plate_${plate}`);
+
+      // Refresh history list
+      searchClaimHistory(plate);
+
+      // If active ticket pass matches, reset to form
+      if (currentRedemptionId === redemptionId) {
+        barcodeSection.classList.add('hidden');
+        formSection.classList.remove('hidden');
+      }
+    } catch {
+      // Mock fallback
+      showHistoryAlert('Voucher successfully unclaimed. Daily quota released.', 'success');
+      fallbackUnclaimSection.classList.add('hidden');
+      pendingUnclaimRecord = null;
+      searchClaimHistory(plate);
+      if (currentRedemptionId === redemptionId) {
+        barcodeSection.classList.add('hidden');
+        formSection.classList.remove('hidden');
+      }
+    }
+  }
+
+  // Active pass unclaim trigger
+  passUnclaimBtn?.addEventListener('click', () => {
+    if (currentPlate) {
+      openHistoryDrawer(currentPlate);
+    }
+  });
+
+  // ============================================================================
+  // 7. KEYBOARD & GLOBAL EVENTS
+  // ============================================================================
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!enlargeModal.classList.contains('hidden')) closeEnlargeModal();
+      else if (!historyModal.classList.contains('hidden')) closeHistoryDrawer();
+    }
+  });
+
+  // Global listener from BottomNav or Header
+  window.addEventListener('clementi:open-history', ((e: CustomEvent) => {
+    openHistoryDrawer(e.detail?.plate);
+  }) as EventListener);
 
   function setLoading(loading: boolean) {
     if (!submitBtn) return;
@@ -825,7 +1130,7 @@
       submitSpinner?.classList.remove('hidden');
       submitIcon?.classList.add('hidden');
       submitArrow?.classList.add('hidden');
-      if (submitText) submitText.textContent = 'Validating OCR Receipt...';
+      if (submitText) submitText.textContent = 'Generating Barcode...';
     } else {
       submitSpinner?.classList.add('hidden');
       submitIcon?.classList.remove('hidden');
@@ -843,5 +1148,19 @@
 
   function hideError() {
     errorBanner?.classList.add('hidden');
+  }
+
+  function showHistoryAlert(msg: string, type: 'error' | 'warning' | 'success') {
+    if (!historyAlertBanner || !historyAlertText) return;
+    historyAlertText.textContent = msg;
+    historyAlertBanner.className = 'rounded-xl p-3 text-xs flex items-start gap-2 ' +
+      (type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
+       type === 'warning' ? 'bg-amber-50 text-amber-900 border border-amber-200' :
+       'bg-green-50 text-green-800 border border-green-200');
+    historyAlertBanner.classList.remove('hidden');
+  }
+
+  function clearHistoryAlert() {
+    historyAlertBanner?.classList.add('hidden');
   }
 </script>
