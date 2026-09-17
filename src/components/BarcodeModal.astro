@@ -1,0 +1,66 @@
+---
+// Enlargeable High-Contrast Barcode Modal
+// Accessible, WCAG AAA compliant (pure black on pure white), tap/click or Escape to dismiss
+---
+
+<div
+  id="barcode-enlarge-modal"
+  class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="enlarge-modal-title"
+>
+  <div
+    class="bg-white rounded-2xl p-6 max-w-sm sm:max-w-md w-full text-center shadow-2xl border-4 border-slate-900 space-y-4"
+    id="enlarge-modal-content"
+  >
+    <!-- Close & Header -->
+    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+      <div class="text-left">
+        <h3 id="enlarge-modal-title" class="font-display font-black text-sm tracking-wider uppercase text-slate-900">
+          Exit Gantry Scanner View
+        </h3>
+        <p class="text-[11px] text-slate-600 font-body">Hold 10–15cm from optical reader</p>
+      </div>
+      <button
+        type="button"
+        id="close-enlarge-modal-btn"
+        class="text-slate-500 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+        aria-label="Close enlarged barcode"
+      >
+        <span class="material-symbols-outlined text-2xl leading-none">close</span>
+      </button>
+    </div>
+
+    <!-- Instructions Callout -->
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-900 flex items-center gap-2 text-left">
+      <span class="material-symbols-outlined text-amber-600 text-base shrink-0">wb_sunny</span>
+      <span class="font-medium">Turn phone brightness to 100% for fastest laser scan.</span>
+    </div>
+
+    <!-- Vehicle Plate Tag -->
+    <div class="inline-flex items-center gap-2 bg-slate-900 text-white px-3.5 py-1 rounded-md text-xs font-mono font-bold tracking-wider">
+      <span class="bg-clementi-crimson text-white text-[9px] font-black px-1.5 py-0.5 rounded">SG</span>
+      <span id="enlarge-modal-plate">SBA 1234 A</span>
+    </div>
+
+    <!-- Enlarged Barcode Container (Pure Black on Pure White) -->
+    <div class="w-full bg-white p-4 border-2 border-slate-900 rounded-xl overflow-x-auto flex flex-col items-center justify-center">
+      <svg id="enlarge-barcode-svg" class="max-w-full"></svg>
+      <div id="enlarge-barcode-text" class="font-mono font-black text-xl sm:text-2xl tracking-widest text-slate-950 mt-2 select-all">
+        CLM-12345678
+      </div>
+    </div>
+
+    <!-- Tap to dismiss hint & button -->
+    <div class="pt-1">
+      <button
+        type="button"
+        id="dismiss-enlarge-btn"
+        class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-display font-bold text-xs uppercase tracking-wider rounded-xl transition-colors"
+      >
+        Tap Anywhere to Close
+      </button>
+    </div>
+  </div>
+</div>
