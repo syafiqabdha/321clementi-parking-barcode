@@ -1,0 +1,117 @@
+---
+// Fixed Bottom Navigation Bar component
+// Tabs: Redeem (Active), History, Rates
+---
+
+<nav
+  aria-label="Bottom Navigation"
+  class="fixed bottom-0 left-0 w-full z-50 bg-clementi-white border-t border-clementi-border shadow-md"
+>
+  <div class="max-w-md mx-auto h-16 px-4 flex justify-around items-center">
+    <!-- Tab 1: Redeem (ACTIVE) -->
+    <a
+      href="#redemption-form-section"
+      id="nav-tab-redeem"
+      aria-current="page"
+      class="flex flex-col items-center justify-center text-clementi-crimson font-bold py-1 active:scale-95 transition-all"
+    >
+      <span class="material-symbols-outlined text-2xl fill-1" style="font-variation-settings: 'FILL' 1;">qr_code_scanner</span>
+      <span class="text-xs font-display mt-0.5 font-bold">Redeem</span>
+    </a>
+
+    <!-- Tab 2: History (INACTIVE) -->
+    <button
+      type="button"
+      id="nav-tab-history"
+      class="flex flex-col items-center justify-center text-clementi-slate hover:text-clementi-crimson py-1 active:scale-95 transition-all"
+    >
+      <span class="material-symbols-outlined text-2xl">receipt_long</span>
+      <span class="text-xs font-display mt-0.5">History</span>
+    </button>
+
+    <!-- Tab 3: Rates (INACTIVE) -->
+    <a
+      href="#carpark-rates-section"
+      id="nav-tab-rates"
+      class="flex flex-col items-center justify-center text-clementi-slate hover:text-clementi-crimson py-1 active:scale-95 transition-all"
+    >
+      <span class="material-symbols-outlined text-2xl">directions_car</span>
+      <span class="text-xs font-display mt-0.5">Rates</span>
+    </a>
+  </div>
+</nav>
+
+<!-- History Modal Dialog (Zero-PII retention explanation) -->
+<div
+  id="history-modal"
+  class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+  role="dialog"
+  aria-labelledby="history-modal-title"
+  aria-modal="true"
+>
+  <div class="bg-clementi-white rounded-2xl max-w-sm w-full p-5 border border-clementi-border shadow-elevated space-y-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-full bg-pink-50 text-clementi-crimson flex items-center justify-center">
+          <span class="material-symbols-outlined text-lg">receipt_long</span>
+        </span>
+        <h3 id="history-modal-title" class="font-display font-bold text-base text-clementi-charcoal">
+          Redemption History
+        </h3>
+      </div>
+      <button
+        type="button"
+        id="close-history-modal"
+        class="w-8 h-8 flex items-center justify-center rounded-full text-clementi-slate hover:bg-slate-100"
+        aria-label="Close"
+      >
+        <span class="material-symbols-outlined text-lg">close</span>
+      </button>
+    </div>
+
+    <div class="bg-clementi-subtle rounded-xl p-3.5 border border-clementi-border text-xs text-clementi-slate space-y-2">
+      <div class="flex items-center gap-2 text-clementi-charcoal font-display font-bold">
+        <span class="material-symbols-outlined text-clementi-green text-base fill-1" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+        <span>Zero-PII Privacy Protection</span>
+      </div>
+      <p class="leading-relaxed">
+        For your privacy and security, receipts and plate numbers are processed instantaneously in real-time. No vehicle or receipt details are stored on your device or unhashed on our servers.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      id="history-modal-ok-btn"
+      class="w-full py-2.5 bg-action-primary hover:bg-action-hover text-clementi-white font-display font-bold text-xs rounded-lg transition-colors"
+    >
+      Understood
+    </button>
+  </div>
+</div>
+
+<script>
+  const historyBtn = document.getElementById('nav-tab-history');
+  const historyModal = document.getElementById('history-modal');
+  const closeHistoryBtn = document.getElementById('close-history-modal');
+  const historyOkBtn = document.getElementById('history-modal-ok-btn');
+
+  if (historyBtn && historyModal) {
+    historyBtn.addEventListener('click', () => {
+      historyModal.classList.remove('hidden');
+    });
+
+    closeHistoryBtn?.addEventListener('click', () => {
+      historyModal.classList.add('hidden');
+    });
+
+    historyOkBtn?.addEventListener('click', () => {
+      historyModal.classList.add('hidden');
+    });
+
+    historyModal.addEventListener('click', (e) => {
+      if (e.target === historyModal) {
+        historyModal.classList.add('hidden');
+      }
+    });
+  }
+</script>

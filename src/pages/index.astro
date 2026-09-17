@@ -3,18 +3,22 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import RedemptionBanner from '../components/RedemptionBanner.astro';
 import RedemptionCard from '../components/RedemptionCard.astro';
 import StepGuide from '../components/StepGuide.astro';
+import CarparkRates from '../components/CarparkRates.astro';
 ---
 
 <BaseLayout
-  title="321 Clementi | Smart Parking Redemption"
-  description="Autonomous receipt-to-barcode parking redemption for 321 Clementi. 2 hours free parking (12:00 PM - 3:00 PM weekdays)."
+  title="321 Clementi Free 2-Hour Parking Redemption Portal"
+  description="Autonomous receipt-to-barcode parking redemption for 321 Clementi. 2 hours free parking (12:00 PM – 3:00 PM weekdays, min. spend $30)."
 >
-  <!-- Operating Hours & Fast-Fail Window Banner -->
+  <!-- Operating Hours & Live Promotion Window Banner -->
   <RedemptionBanner />
 
-  <!-- Primary Mobile-First Card Container (Basement High-Contrast Optimized) -->
+  <!-- Primary Mobile-First Card Container (Active Intake, Closed State & Barcode Pass) -->
   <RedemptionCard />
 
   <!-- 3-Step Shopper Guidance -->
   <StepGuide />
+
+  <!-- Standard Carpark Rates Bento Grid -->
+  <CarparkRates />
 </BaseLayout>
