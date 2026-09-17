@@ -178,33 +178,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /redemptions/{id}/unclaim:
+  /redemptions/unclaim:
     post:
       summary: Unclaim Voucher and Release Daily Quota
       description: |
         Releases an active voucher back to the available pool and marks redemption log as UNCLAIMED. Allows shopper to recover from a lost browser session or expired countdown window.
       operationId: unclaimRedemption
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: Redemption record UUID
-        - name: X-Claim-Token
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Bearer claim token issued at initial redemption
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [id]
               properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: Redemption record UUID (required, in JSON body)
                 vehicle_plate:
                   type: string
                   example: "SBA 1234 A"
