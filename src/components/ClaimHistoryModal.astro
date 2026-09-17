@@ -1,0 +1,153 @@
+---
+// Claim History & Recovery Drawer/Modal Component
+// Supports plate lookup, fast-path unclaim (localStorage token), fallback recovery (spend + shop), and barcode resuming.
+---
+
+<div
+  id="claim-history-modal"
+  class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="history-drawer-title"
+>
+  <div
+    class="bg-clementi-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl border border-clementi-border shadow-elevated max-h-[90vh] flex flex-col overflow-hidden"
+    id="history-drawer-content"
+  >
+    <!-- Header -->
+    <div class="p-4 sm:p-5 border-b border-clementi-border flex items-center justify-between bg-clementi-subtle">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-full bg-pink-100 text-clementi-crimson flex items-center justify-center">
+          <span class="material-symbols-outlined text-xl">receipt_long</span>
+        </div>
+        <div>
+          <h3 id="history-drawer-title" class="font-display font-bold text-base text-clementi-charcoal">
+            Claim History & Voucher Recovery
+          </h3>
+          <p class="text-[11px] text-clementi-slate">Look up past claims and manage daily passes</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        id="close-history-drawer-btn"
+        class="w-8 h-8 rounded-full text-clementi-slate hover:bg-slate-200 flex items-center justify-center transition-colors"
+        aria-label="Close claim history"
+      >
+        <span class="material-symbols-outlined text-xl">close</span>
+      </button>
+    </div>
+
+    <!-- Body Container (Scrollable) -->
+    <div class="p-4 sm:p-6 overflow-y-auto space-y-4">
+      <!-- Search Input Section -->
+      <div class="space-y-1.5">
+        <label for="history-plate-input" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
+          Enter Car Plate Number
+        </label>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="history-plate-input"
+            placeholder="e.g. SBA 1234 A or JQR 1234"
+            class="flex-1 rounded-xl border-2 border-clementi-border bg-clementi-subtle px-3.5 py-2.5 text-sm font-display font-bold tracking-wider uppercase text-clementi-charcoal focus:border-clementi-crimson focus:outline-none"
+            autocomplete="off"
+            autocapitalize="characters"
+          />
+          <button
+            type="button"
+            id="history-search-btn"
+            class="px-4 py-2.5 bg-action-primary hover:bg-action-hover text-white font-display font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1"
+          >
+            <span class="material-symbols-outlined text-sm">search</span>
+            <span>Lookup</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Error / Notice Banner -->
+      <div id="history-alert-banner" class="hidden rounded-xl p-3 text-xs flex items-start gap-2">
+        <span class="material-symbols-outlined text-base shrink-0 mt-0.5" id="history-alert-icon">info</span>
+        <div id="history-alert-text" class="flex-1 font-medium"></div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="history-loading-spinner" class="hidden py-8 text-center space-y-2">
+        <svg class="animate-spin h-6 w-6 text-clementi-crimson mx-auto" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="text-xs text-clementi-slate">Retrieving claim records...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div id="history-empty-state" class="hidden py-8 text-center space-y-2">
+        <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+          <span class="material-symbols-outlined text-2xl">search_off</span>
+        </div>
+        <div class="font-display font-bold text-sm text-clementi-charcoal">No Redemptions Found</div>
+        <p class="text-xs text-clementi-slate max-w-xs mx-auto">
+          No parking voucher claims were found for this vehicle plate today.
+        </p>
+      </div>
+
+      <!-- Results List -->
+      <div id="history-results-list" class="space-y-3"></div>
+
+      <!-- Secondary Fallback Unclaim Confirmation Dialog (Nested) -->
+      <div id="fallback-unclaim-section" class="hidden border-2 border-amber-300 bg-amber-50/70 rounded-xl p-4 space-y-3">
+        <div class="flex items-start gap-2">
+          <span class="material-symbols-outlined text-amber-700 text-base shrink-0 mt-0.5">lock_reset</span>
+          <div class="space-y-0.5">
+            <h4 class="font-display font-bold text-xs text-amber-950">Secondary Ownership Verification</h4>
+            <p class="text-[11px] text-amber-800">
+              No saved claim token found on this browser. Confirm receipt details to release voucher.
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div>
+            <label for="fallback-spend-input" class="block text-[10px] font-bold uppercase text-slate-700 font-display">
+              Exact Receipt Spend ($)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              id="fallback-spend-input"
+              placeholder="e.g. 30.00"
+              class="w-full rounded-lg border border-clementi-border bg-white px-3 py-1.5 text-xs font-mono font-bold text-clementi-charcoal"
+            />
+          </div>
+          <div>
+            <label for="fallback-shop-select" class="block text-[10px] font-bold uppercase text-slate-700 font-display">
+              Visited Store
+            </label>
+            <select
+              id="fallback-shop-select"
+              class="w-full rounded-lg border border-clementi-border bg-white px-3 py-1.5 text-xs text-clementi-charcoal"
+            >
+              <option value="">Select qualifying shop...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-1">
+          <button
+            type="button"
+            id="cancel-fallback-btn"
+            class="flex-1 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 font-display font-bold text-xs"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="confirm-fallback-btn"
+            class="flex-1 py-2 rounded-lg bg-clementi-crimson hover:bg-action-hover text-white font-display font-bold text-xs"
+          >
+            Verify & Unclaim
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

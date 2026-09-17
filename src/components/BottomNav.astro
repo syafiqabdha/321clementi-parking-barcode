@@ -95,20 +95,26 @@
   const closeHistoryBtn = document.getElementById('close-history-modal');
   const historyOkBtn = document.getElementById('history-modal-ok-btn');
 
-  if (historyBtn && historyModal) {
+  if (historyBtn) {
     historyBtn.addEventListener('click', () => {
-      historyModal.classList.remove('hidden');
+      // Trigger full Claim History & Recovery modal
+      const claimHistoryModal = document.getElementById('claim-history-modal');
+      if (claimHistoryModal) {
+        window.dispatchEvent(new CustomEvent('clementi:open-history'));
+      } else if (historyModal) {
+        historyModal.classList.remove('hidden');
+      }
     });
 
     closeHistoryBtn?.addEventListener('click', () => {
-      historyModal.classList.add('hidden');
+      historyModal?.classList.add('hidden');
     });
 
     historyOkBtn?.addEventListener('click', () => {
-      historyModal.classList.add('hidden');
+      historyModal?.classList.add('hidden');
     });
 
-    historyModal.addEventListener('click', (e) => {
+    historyModal?.addEventListener('click', (e) => {
       if (e.target === historyModal) {
         historyModal.classList.add('hidden');
       }
