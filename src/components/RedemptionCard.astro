@@ -259,6 +259,7 @@
   import JsBarcode from 'jsbarcode';
 
   // Constants & Config
+  const MAX_INPUT_FILE_SIZE = 20 * 1024 * 1024; // 20 MB max raw upload size
   const MAX_IMAGE_WIDTH = 1200;
   const JPEG_QUALITY = 0.85;
 
@@ -290,6 +291,7 @@
 
   // State
   let downsampledBlob: Blob | null = null;
+  let currentPreviewUrl: string | null = null;
   let isPlateValid = false;
   let countdownTimerId: number | null = null;
 
@@ -353,50 +355,71 @@
   });
 
   // ============================================================================
-  // 2. HTML5 CANVAS DOWNSAMPLING
+  // 2. HTML5 CANVAS DOWNSAMPLING (Hardened against DoS & Memory Bloat)
   // ============================================================================
   async function downsampleImage(file: File): Promise<Blob> {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Invalid file type. Please upload a standard image file (JPEG, PNG, WEBP).');
+    }
+    if (file.size > MAX_INPUT_FILE_SIZE) {
+      throw new Error('Image file too large (max 20 MB). Please take a photo directly with your camera.');
+    }
+
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          let width = img.width;
-          let height = img.height;
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
 
-          if (width > MAX_IMAGE_WIDTH) {
-            height = (height * MAX_IMAGE_WIDTH) / width;
-            width = MAX_IMAGE_WIDTH;
-          }
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
 
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
+        // Decompression bomb / extreme dimension guard
+        if (img.width > 12000 || img.height > 12000) {
+          reject(new Error('Image dimensions exceed safety limit.'));
+          return;
+        }
 
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            reject(new Error('Canvas 2D context unavailable'));
-            return;
-          }
+        let width = img.width;
+        let height = img.height;
 
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                resolve(blob);
-              } else {
-                reject(new Error('Canvas to Blob failed'));
-              }
-            },
-            'image/jpeg',
-            JPEG_QUALITY
-          );
-        };
-        img.onerror = () => reject(new Error('Image failed to load'));
-        img.src = e.target?.result as string;
+        if (width > MAX_IMAGE_WIDTH) {
+          height = Math.round((height * MAX_IMAGE_WIDTH) / width);
+          width = MAX_IMAGE_WIDTH;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas 2D context unavailable'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            // Free canvas memory buffer
+            canvas.width = 0;
+            canvas.height = 0;
+
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Canvas image compression failed'));
+            }
+          },
+          'image/jpeg',
+          JPEG_QUALITY
+        );
       };
-      reader.onerror = () => reject(new Error('FileReader error'));
-      reader.readAsDataURL(file);
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Failed to load receipt image for compression'));
+      };
+
+      img.src = objectUrl;
     });
   }
 
@@ -422,15 +445,19 @@
       downsampledBlob = await downsampleImage(file);
       const sizeKB = Math.round(downsampledBlob.size / 1024);
 
-      previewThumbnail.src = URL.createObjectURL(downsampledBlob);
+      if (currentPreviewUrl) {
+        URL.revokeObjectURL(currentPreviewUrl);
+      }
+      currentPreviewUrl = URL.createObjectURL(downsampledBlob);
+      previewThumbnail.src = currentPreviewUrl;
       previewFilename.textContent = file.name;
       previewBadge.textContent = `Compressed: ${sizeKB} KB (JPEG)`;
 
       dropzonePrompt.classList.add('hidden');
       dropzonePreview.classList.remove('hidden');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Downsampling failed:', err);
-      showError('Failed to process receipt image. Please try another photo.');
+      showError(err.message || 'Failed to process receipt image. Please try another photo.');
     }
   });
 
@@ -468,7 +495,7 @@
       const hour = sgtDate.getHours();
 
       // Send to n8n webhook or staging endpoint
-      const webhookUrl = (window as any).CLEMENTI_WEBHOOK_URL || '/api/v1/redemption';
+      const webhookUrl = (window as any).CLEMENTI_WEBHOOK_URL || (import.meta.env.PUBLIC_REDEMPTION_WEBHOOK_URL) || '/api/v1/redemption';
       const formData = new FormData();
       formData.append('receipt', downsampledBlob, 'receipt.jpg');
       formData.append('vehiclePlate', rawPlate);
@@ -480,16 +507,39 @@
           method: 'POST',
           body: formData,
         });
-        if (response.ok) {
-          const resJson = await response.json();
-          voucherCode = resJson.voucher_code || resJson.voucherCode || `321CLM${Date.now().toString().slice(-8)}`;
-        } else {
-          // Fallback code for local/staging testing
-          voucherCode = `321CLM${Date.now().toString().slice(-8)}`;
+
+        if (!response.ok) {
+          let errorMsg = 'Receipt verification failed. Please try again.';
+          try {
+            const errJson = await response.json();
+            errorMsg = errJson.message || errJson.error || errorMsg;
+          } catch {
+            if (response.status === 400) {
+              errorMsg = 'Receipt does not qualify. Minimum $30 same-day spend required.';
+            } else if (response.status === 403) {
+              errorMsg = 'Redemptions are only valid between 12:00 PM – 3:00 PM on weekdays.';
+            } else if (response.status === 429) {
+              errorMsg = 'Too many requests. Please wait a minute before retrying.';
+            }
+          }
+          showError(errorMsg);
+          return;
         }
-      } catch (networkErr) {
-        // If endpoint is offline during initial preview, generate valid test voucher
-        voucherCode = `321CLM${Date.now().toString().slice(-8)}`;
+
+        const resJson = await response.json();
+        voucherCode = resJson.voucher_code || resJson.voucherCode;
+        if (!voucherCode) {
+          showError('Invalid server response: No voucher code returned.');
+          return;
+        }
+      } catch (networkErr: any) {
+        // Only allow fallback code in explicit client mock preview mode
+        if ((window as any).CLEMENTI_MOCK_PREVIEW) {
+          voucherCode = `321CLM${Date.now().toString().slice(-8)}`;
+        } else {
+          showError('Unable to connect to verification service. Please check network connection.');
+          return;
+        }
       }
 
       // Transition to Barcode Screen
@@ -553,6 +603,10 @@
     formSection.classList.remove('hidden');
 
     // Reset fields
+    if (currentPreviewUrl) {
+      URL.revokeObjectURL(currentPreviewUrl);
+      currentPreviewUrl = null;
+    }
     plateInput.value = '';
     plateInput.classList.remove('border-green-500', 'border-red-500');
     fileInput.value = '';

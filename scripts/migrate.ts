@@ -11,11 +11,15 @@ import { SQL } from 'bun';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://TodXm21YM2da2T4p:Gbm9xPgRwYPKBHrXaPrDCTc8QZia53w7@172.21.0.2:5432/clementi_redemption';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('[error] DATABASE_URL environment variable is required.');
+  process.exit(1);
+}
 const MIGRATIONS_DIR = join(import.meta.dir, '..', 'migrations');
 
 async function getClient() {
-  return new SQL(DATABASE_URL);
+  return new SQL(DATABASE_URL!);
 }
 
 async function ensureMigrationTable(sql: SQL) {
