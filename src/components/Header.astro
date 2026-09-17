@@ -1,17 +1,42 @@
 ---
-import Logo from './Logo.astro';
+// Refined TopAppBar Component from Stitch Blueprint & Brand Spec v1.2
+// Docked sticky top bar with left brand logo, center portal title, and right help trigger.
 ---
 
-<header class="w-full bg-clementi-white border-b border-clementi-border sticky top-0 z-30 shadow-sm" role="banner">
-  <div class="max-w-md mx-auto px-4 py-3 flex flex-col items-center justify-center text-center">
-    <!-- Official 321 Clementi Logo with approved clearspace & sizing (>=120px) -->
-    <Logo width={160} height={160} class="mb-1" />
-    
-    <div class="mt-1">
-      <span class="inline-block text-[11px] font-semibold uppercase tracking-[0.24em] text-clementi-crimson font-display">
-        Smart Parking Portal
-      </span>
-      <h1 class="sr-only">321 Clementi Parking Redemption</h1>
+<header
+  class="w-full bg-clementi-white border-b border-clementi-border sticky top-1.5 z-40 shadow-xs"
+  role="banner"
+>
+  <div class="w-full max-w-md mx-auto flex items-center justify-between px-4 py-2.5 gap-2">
+    <!-- Left: Official 321 Clementi Logo -->
+    <a href="/" class="flex items-center shrink-0" aria-label="321 Clementi Home">
+      <img
+        src="/brand/logo.png"
+        alt="321 Clementi"
+        class="h-9 w-auto object-contain"
+        width="36"
+        height="36"
+        loading="eager"
+      />
+    </a>
+
+    <!-- Center: Official Portal Wordmark Lockup -->
+    <div class="flex-1 text-center px-1">
+      <h1 class="font-display font-bold text-clementi-crimson text-xs sm:text-[13px] uppercase tracking-wider leading-tight">
+        Free 2-Hour Parking Redemption Portal
+      </h1>
+    </div>
+
+    <!-- Right: Contextual Assistance Trigger -->
+    <div class="flex items-center shrink-0">
+      <a
+        href="#terms-section"
+        id="header-help-button"
+        aria-label="Carpark Assistance & Promotion Terms"
+        class="w-8 h-8 flex items-center justify-center rounded-full text-clementi-slate hover:bg-slate-100 hover:text-clementi-crimson active:scale-95 transition-all duration-150"
+      >
+        <span class="material-symbols-outlined text-xl">help_outline</span>
+      </a>
     </div>
   </div>
 </header>

@@ -1,6 +1,7 @@
 ---
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import BottomNav from '../components/BottomNav.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -9,8 +10,8 @@ interface Props {
 }
 
 const {
-  title = '321 Clementi | Smart Parking Barcode Redemption',
-  description = 'Redeem 2 hours complimentary parking at 321 Clementi. Instant mobile redemption (12:00 PM – 3:00 PM weekdays, min spend $30).',
+  title = '321 Clementi Free 2-Hour Parking Redemption Portal',
+  description = 'Autonomous receipt-to-barcode parking redemption for 321 Clementi. 2 hours free parking (12:00 PM – 3:00 PM weekdays, min. spend $30).',
 } = Astro.props;
 ---
 
@@ -41,7 +42,7 @@ const {
       crossorigin
     />
     
-    <!-- Google Fonts Preconnect & Display Swap for Inter Body Copy -->
+    <!-- Google Fonts Preconnect & Inter Body Copy -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -49,15 +50,37 @@ const {
       rel="stylesheet"
     />
 
+    <!-- Google Material Symbols Outlined Icons -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+
     <title>{title}</title>
   </head>
   <body class="min-h-screen flex flex-col bg-clementi-subtle text-clementi-charcoal selection:bg-pink-100 selection:text-clementi-crimson">
+    <!-- Top Brand Spectrum Ribbon (6-stripe mall spectrum: Green -> Cyan -> Lavender -> Pink -> Crimson -> Orange) -->
+    <div class="w-full flex h-1.5 z-50 sticky top-0" aria-hidden="true">
+      <div class="flex-1 bg-clementi-green" title="Fresh Leaf Green"></div>
+      <div class="flex-1 bg-clementi-cyan" title="Coastal Cyan"></div>
+      <div class="flex-1 bg-clementi-lavender" title="Wisteria Lavender"></div>
+      <div class="flex-1 bg-clementi-pink" title="Blossom Pink"></div>
+      <div class="flex-1 bg-clementi-crimson" title="Clementi Crimson"></div>
+      <div class="flex-1 bg-clementi-orange" title="Tangerine Orange"></div>
+    </div>
+
+    <!-- Sticky Top App Bar -->
     <Header />
 
-    <main id="main-content" class="flex-1 w-full max-w-md mx-auto px-4 py-5 flex flex-col items-center">
+    <!-- Main Content Container -->
+    <main id="main-content" class="flex-1 w-full max-w-md mx-auto px-4 py-4 flex flex-col items-center pb-24">
       <slot />
     </main>
 
+    <!-- Footer -->
     <Footer />
+
+    <!-- Bottom Navigation Bar -->
+    <BottomNav />
   </body>
 </html>

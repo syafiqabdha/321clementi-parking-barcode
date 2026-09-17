@@ -1,0 +1,47 @@
+---
+// Standard Carpark Rates Component (Bento Grid)
+// Extracted from 321 Clementi Carpark Schedule
+---
+
+<section
+  id="carpark-rates-section"
+  class="w-full bg-clementi-white rounded-2xl border border-clementi-border p-4 sm:p-5 shadow-sm space-y-3 mb-5"
+  aria-labelledby="rates-heading"
+>
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="material-symbols-outlined text-clementi-crimson text-xl">schedule</span>
+      <h3 id="rates-heading" class="font-display font-bold text-sm sm:text-base text-clementi-charcoal">
+        Standard Carpark Rates
+      </h3>
+    </div>
+    <span class="text-[11px] text-clementi-crimson bg-pink-50 border border-pink-100 px-2 py-0.5 rounded font-display font-bold">
+      GST Included
+    </span>
+  </div>
+
+  <div class="grid grid-cols-2 gap-2.5 pt-1">
+    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left">
+      <p class="text-[11px] text-clementi-slate font-medium">Weekdays (7am – 5pm)</p>
+      <p class="font-display text-base font-bold text-clementi-charcoal mt-0.5">
+        $1.40 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hr</span>
+      </p>
+      <p class="text-[11px] text-clementi-slate/80 mt-0.5">$0.70 per sub 30 mins</p>
+    </div>
+
+    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left">
+      <p class="text-[11px] text-clementi-slate font-medium">Weekends & PH</p>
+      <p class="font-display text-base font-bold text-clementi-charcoal mt-0.5">
+        $1.60 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hr</span>
+      </p>
+      <p class="text-[11px] text-clementi-slate/80 mt-0.5">$0.80 per sub 30 mins</p>
+    </div>
+  </div>
+
+  <div class="rounded-lg bg-emerald-50/80 border border-emerald-200/60 p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
+    <span class="material-symbols-outlined text-clementi-green text-base shrink-0 fill-1" style="font-variation-settings: 'FILL' 1;">verified</span>
+    <span>
+      <strong>Free Parking Promotion:</strong> 2 Hours Free Waiver for entries 12:00 PM – 3:00 PM weekdays with $30 qualifying spend.
+    </span>
+  </div>
+</section>

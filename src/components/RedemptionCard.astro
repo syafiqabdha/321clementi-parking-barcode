@@ -2,10 +2,11 @@
 // Mobile-first card container optimized for basement mall lighting.
 // High contrast (WCAG AAA for text), clear touch targets, and resilient visibility.
 // Implements client-side HTML5 canvas downsampling, LTA MOD-19 plate validation, and Code 128 barcode rendering.
+// Refined with tactile ticket pass, perforation notches, and closed-state handling from Stitch export.
 ---
 
 <div
-  class="w-full bg-clementi-white rounded-lg border border-clementi-border shadow-card overflow-hidden transition-all mb-6"
+  class="w-full bg-clementi-white rounded-2xl border border-clementi-border shadow-card overflow-hidden transition-all mb-5 relative"
   data-testid="redemption-card-container"
 >
   <!-- 321 Clementi Brand Ribbon (6-color spectrum top accent) -->
@@ -18,41 +19,45 @@
     <div class="h-full flex-1 bg-[#F47820]" title="Tangerine Orange"></div>
   </div>
 
-  <!-- SECTION 1: INTAKE & REDEMPTION FORM -->
+  <!-- SECTION 1: INTAKE & REDEMPTION FORM (Active State) -->
   <div id="redemption-form-section" class="p-5 sm:p-6 space-y-5">
     <!-- Card Heading -->
     <div class="text-left">
-      <div class="inline-flex items-center gap-1.5 text-xs font-bold text-clementi-crimson uppercase tracking-wider font-display mb-1">
-        <span>Autonomous Self-Service</span>
+      <div class="flex items-center gap-1.5 mb-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-clementi-crimson"></span>
+        <span class="text-xs font-bold text-clementi-crimson uppercase tracking-wider font-display">
+          Parking Redemption
+        </span>
       </div>
       <h2 class="text-xl sm:text-2xl font-bold text-clementi-charcoal font-display tracking-tight">
         Claim Parking Voucher
       </h2>
       <p class="text-xs sm:text-sm text-clementi-slate mt-1 font-body leading-relaxed">
-        Skip the Information Counter queue. Verify your same-day receipt in seconds to receive an instant Code 128 barcode for car park exit.
+        Enter your IU vehicle plate number and submit your same-day qualifying receipt to receive an instant optical Code 128 exit barcode.
       </p>
     </div>
 
     <!-- Error Alert Banner (Hidden by default) -->
     <div
       id="error-banner"
-      class="hidden rounded-md bg-red-50 border border-red-200 p-3 text-xs text-red-800 flex items-start gap-2"
+      class="hidden rounded-xl bg-red-50 border border-red-200 p-3.5 text-xs text-red-800 flex items-start gap-2.5 shadow-xs"
       role="alert"
     >
-      <svg class="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-      </svg>
-      <div id="error-banner-message" class="font-medium">Please correct the highlighted errors.</div>
+      <span class="material-symbols-outlined text-red-600 text-lg flex-shrink-0 mt-0.5 fill-1" style="font-variation-settings: 'FILL' 1;">error</span>
+      <div id="error-banner-message" class="font-medium flex-1">Please correct the highlighted errors.</div>
     </div>
 
     <!-- Intake Form -->
     <form id="redemption-form" class="space-y-4" onsubmit="return false;">
       <!-- Step 1: Vehicle Plate Number -->
-      <div>
-        <label for="vehicle-plate" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display mb-1.5">
+      <div class="space-y-1.5">
+        <label for="vehicle-plate" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
           Vehicle Registration Number <span class="text-clementi-crimson" aria-hidden="true">*</span>
         </label>
-        <div class="relative">
+        <div class="relative flex rounded-xl shadow-xs overflow-hidden">
+          <span class="inline-flex items-center px-3.5 bg-slate-100 border-2 border-r-0 border-clementi-border text-clementi-slate font-display font-bold text-xs sm:text-sm tracking-wider select-none">
+            SG
+          </span>
           <input
             type="text"
             id="vehicle-plate"
@@ -62,35 +67,37 @@
             autocomplete="off"
             autocapitalize="characters"
             spellcheck="false"
-            class="w-full px-3.5 py-3 rounded-md border-2 border-clementi-border focus:border-clementi-crimson focus:ring-2 focus:ring-pink-100 text-clementi-charcoal font-display font-bold text-base tracking-widest placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal transition-all outline-none uppercase bg-[#F8F9FA]"
+            class="block w-full rounded-none rounded-r-xl border-2 border-clementi-border bg-clementi-subtle px-3.5 py-3 text-base font-display font-bold tracking-widest uppercase text-clementi-charcoal placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal focus:border-clementi-crimson focus:ring-1 focus:ring-clementi-pink focus:outline-none transition-colors"
             required
-            aria-describedby="plate-helper"
+            aria-describedby="plate-feedback"
           />
-          <div id="plate-status-icon" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-            <span class="text-xs font-bold text-clementi-slate/70 font-display">SG</span>
-          </div>
         </div>
-        <div id="plate-feedback" class="text-[11px] text-clementi-slate mt-1.5 flex items-center gap-1 transition-colors">
-          <svg class="w-3.5 h-3.5 text-clementi-slate/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span id="plate-feedback-text">Validated with LTA MOD-19 checksum (1 pass per vehicle / patron per day).</span>
+        <div id="plate-feedback" class="text-[11px] text-clementi-slate mt-1.5 flex items-center justify-between transition-colors px-0.5">
+          <div class="flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm text-clementi-slate/80 flex-shrink-0">info</span>
+            <span id="plate-feedback-text">Mod-19 checksum validated (1 pass per vehicle / day).</span>
+          </div>
+          <span id="plate-valid-tag" class="hidden text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
+            Valid Plate
+          </span>
         </div>
       </div>
 
       <!-- Step 2: Receipt Upload Preview & Trigger -->
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between">
           <label class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
-            Mall Receipt Photo <span class="text-clementi-crimson" aria-hidden="true">*</span>
+            Proof of Spend (Receipt Photo) <span class="text-clementi-crimson" aria-hidden="true">*</span>
           </label>
-          <span class="text-[11px] text-clementi-slate font-medium">Min. $30 spend</span>
+          <span class="text-[11px] text-clementi-crimson font-bold bg-pink-50 border border-pink-100 px-2 py-0.5 rounded">
+            Min. $30 spend
+          </span>
         </div>
         
         <!-- Dropzone / Camera Trigger -->
         <div
           id="receipt-dropzone"
-          class="relative border-2 border-dashed border-clementi-border hover:border-clementi-crimson rounded-md p-4 bg-[#F8F9FA] text-center transition-colors cursor-pointer group"
+          class="relative border-2 border-dashed border-clementi-border hover:border-clementi-crimson rounded-xl p-5 bg-[#FDFEFE] text-center transition-all cursor-pointer group flex flex-col items-center justify-center gap-2"
           role="button"
           tabindex="0"
           aria-label="Upload or snap mall receipt"
@@ -105,24 +112,23 @@
           />
 
           <!-- Default State (Prompt) -->
-          <div id="dropzone-prompt" class="flex flex-col items-center justify-center py-2">
-            <div class="w-11 h-11 rounded-full bg-pink-50 text-clementi-crimson flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+          <div id="dropzone-prompt" class="flex flex-col items-center justify-center py-2 space-y-2">
+            <div class="w-12 h-12 rounded-full bg-pink-50 text-clementi-crimson flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
+              <span class="material-symbols-outlined text-2xl">photo_camera</span>
             </div>
-            <span class="text-sm font-bold text-clementi-charcoal font-display">
-              Tap to Snap or Upload Receipt
-            </span>
-            <span class="text-xs text-clementi-slate mt-0.5">
-              Single same-day receipt showing date, store name & total ≥ $30.00
-            </span>
+            <div>
+              <span class="text-sm font-bold text-clementi-charcoal font-display group-hover:text-clementi-crimson transition-colors block">
+                Tap to snap or upload receipt
+              </span>
+              <span class="text-xs text-clementi-slate mt-0.5 block">
+                Supports JPG, PNG (Max 20MB) • Clear store name, date & amount required
+              </span>
+            </div>
           </div>
 
           <!-- Preview State (Shown when photo selected) -->
-          <div id="dropzone-preview" class="hidden flex items-center gap-3 py-1">
-            <div class="relative w-14 h-14 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+          <div id="dropzone-preview" class="hidden w-full flex items-center gap-3 py-1">
+            <div class="relative w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-clementi-border">
               <img id="preview-thumbnail" src="" alt="Receipt thumbnail" class="w-full h-full object-cover" />
             </div>
             <div class="flex-1 text-left min-w-0">
@@ -131,13 +137,13 @@
                 <span id="preview-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800">
                   Compressed: ~200 KB
                 </span>
-                <span class="text-[11px] text-clementi-slate">Ready</span>
+                <span class="text-[11px] text-clementi-green font-bold">✓ Attached</span>
               </div>
             </div>
             <button
               type="button"
               id="retake-receipt-btn"
-              class="text-xs font-bold text-clementi-crimson hover:underline px-2 py-1"
+              class="text-xs font-bold text-clementi-crimson hover:underline px-2.5 py-1 rounded bg-pink-50"
             >
               Retake
             </button>
@@ -145,9 +151,12 @@
         </div>
 
         <!-- Store Exclusions Note -->
-        <p class="text-[11px] text-amber-800 bg-amber-50/80 border border-amber-200/60 rounded px-2.5 py-1.5 mt-2 leading-tight">
-          <strong>Store Exclusions:</strong> Not applicable to Clementi Family & Aesthetic Clinic and GynaeMD Women's Clinic.
-        </p>
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
+          <span class="material-symbols-outlined text-amber-700 text-base shrink-0 mt-0.5">warning</span>
+          <p>
+            <strong>Exclusions:</strong> Excludes pushcarts, pop-up kiosks, bill payments, money changer receipts, Clementi Family & Aesthetic Clinic, and GynaeMD Women's Clinic.
+          </p>
+        </div>
       </div>
 
       <!-- Action Button (Clementi Crimson #ED1651) -->
@@ -155,102 +164,244 @@
         <button
           type="button"
           id="submit-redemption-btn"
-          class="w-full py-3.5 px-5 bg-action-primary hover:bg-action-hover active:bg-[#C0103E] text-clementi-white font-display font-bold text-sm tracking-wide rounded-md shadow-subtle hover:shadow-md transition-all flex items-center justify-center gap-2 focus:ring-4 focus:ring-pink-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full py-3.5 px-5 bg-action-primary hover:bg-action-hover active:scale-[0.99] text-clementi-white font-display font-bold text-sm tracking-wide rounded-xl shadow-md transition-all flex items-center justify-center gap-2 focus:ring-4 focus:ring-pink-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span id="submit-btn-spinner" class="hidden">
-            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </span>
+          <span id="submit-btn-icon" class="material-symbols-outlined text-lg">qr_code_scanner</span>
           <span id="submit-btn-text">Generate Carpark Barcode</span>
-          <svg id="submit-btn-arrow" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
+          <span id="submit-btn-arrow" class="material-symbols-outlined text-base">arrow_forward</span>
         </button>
       </div>
 
       <!-- Crucial IU CashCard Exit Reminder -->
-      <div class="rounded-md bg-blue-50/80 border border-blue-200/60 p-2.5 text-[11px] text-blue-900 leading-snug flex items-start gap-2">
-        <svg class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+      <div class="rounded-xl bg-blue-50/80 border border-blue-200/60 p-3 text-[11px] text-blue-900 leading-snug flex items-start gap-2.5">
+        <span class="material-symbols-outlined text-blue-600 text-base shrink-0 mt-0.5">info</span>
         <div>
           <strong class="font-bold">Exit Gantry Reminder:</strong> Remove your CashCard / NETS Motoring Card from your in-vehicle IU before scanning the complimentary barcode at the exit reader.
         </div>
       </div>
 
       <!-- Security / Privacy notice -->
-      <div class="flex items-center justify-center gap-1.5 text-[11px] text-clementi-slate/80 text-center pt-0.5">
-        <svg class="w-3 h-3 text-clementi-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-          <path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clip-rule="evenodd" />
-        </svg>
+      <div class="flex items-center justify-center gap-1.5 text-[11px] text-clementi-slate text-center pt-1">
+        <span class="material-symbols-outlined text-clementi-green text-base fill-1" style="font-variation-settings: 'FILL' 1;">verified_user</span>
         <span>Zero PII storage: Vehicle registration numbers are hashed via HMAC-SHA256.</span>
       </div>
     </form>
   </div>
 
-  <!-- SECTION 2: CODE 128 BARCODE RESULT SCREEN (Hidden until generated) -->
-  <div id="barcode-result-section" class="hidden p-5 sm:p-6 space-y-5 text-center">
-    <!-- Success Badge -->
-    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-xs font-bold text-green-700 font-display">
-      <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-      </svg>
-      <span>Voucher Approved — 2 Hours Complimentary</span>
-    </div>
-
-    <!-- Vehicle Plate Confirmation -->
-    <div>
-      <div class="text-xs text-clementi-slate uppercase tracking-wider font-display font-medium">Redemption for Vehicle</div>
-      <div id="result-plate-display" class="text-2xl font-black text-clementi-charcoal tracking-widest font-display mt-0.5">SBA 1234 A</div>
-    </div>
-
-    <!-- High-Contrast Laser Scanner Barcode Card -->
-    <div class="bg-white p-4 sm:p-6 rounded-lg border-2 border-clementi-charcoal shadow-md space-y-2">
-      <div class="text-[10px] uppercase tracking-widest text-gray-500 font-display font-bold">Code 128 Laser Gantry Barcode</div>
-      
-      <!-- Pure Black on Pure White SVG Barcode Container -->
-      <div class="w-full flex justify-center py-2 bg-white overflow-x-auto">
-        <svg id="barcode-svg" class="max-w-full"></svg>
+  <!-- SECTION 1B: PORTAL CLOSED STATE (Shown outside operating window or via preview toggle) -->
+  <div id="redemption-closed-section" class="hidden p-5 sm:p-6 space-y-5">
+    <div class="text-left space-y-1">
+      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 border border-red-200 text-clementi-crimson text-xs font-bold tracking-wider font-display">
+        <span class="w-2 h-2 rounded-full bg-clementi-crimson animate-pulse"></span>
+        <span>SYSTEM OFFLINE • 12:00 PM – 3:00 PM ONLY</span>
       </div>
-
-      <div id="barcode-code-text" class="text-sm font-mono font-bold tracking-widest text-clementi-charcoal">
-        CLM-12345678
-      </div>
-    </div>
-
-    <!-- 15-Minute Countdown Expiry Timer -->
-    <div class="rounded-md bg-amber-50 border border-amber-200 p-3 text-amber-900 text-xs space-y-1">
-      <div class="font-bold flex items-center justify-center gap-1.5">
-        <svg class="w-4 h-4 text-amber-700 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Barcode Valid For: <span id="countdown-timer" class="font-mono text-sm font-bold text-clementi-crimson">15:00</span></span>
-      </div>
-      <p class="text-[11px] text-amber-800/90 leading-tight">
-        Scan this barcode directly at the car park exit scanner before exiting.
+      <h2 class="text-xl sm:text-2xl font-bold text-clementi-crimson font-display tracking-tight mt-1">
+        Redemption Currently Closed
+      </h2>
+      <p class="text-xs sm:text-sm text-clementi-slate font-body">
+        Automated 2-Hour Carpark Fee Waiver is available weekdays 12:00 PM – 3:00 PM.
       </p>
     </div>
 
-    <!-- Instructions & Action -->
-    <div class="space-y-3 pt-2">
-      <div class="rounded-md bg-blue-50 border border-blue-200/60 p-2.5 text-[11px] text-blue-900 text-left flex items-start gap-2">
-        <svg class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <div>
-          <strong>At Gantry:</strong> Set screen brightness to 100%. Hold screen 10–15cm in front of the barcode reader.
+    <!-- Closed State Alert Box -->
+    <div class="bg-red-50/90 border border-red-200 rounded-xl p-4 flex items-start gap-3 shadow-xs">
+      <span class="material-symbols-outlined text-clementi-crimson text-2xl flex-shrink-0 mt-0.5 fill-1" style="font-variation-settings: 'FILL' 1;">error</span>
+      <div class="space-y-1">
+        <h3 class="font-display text-sm text-red-900 font-bold leading-snug">
+          Redemption Unavailable
+        </h3>
+        <p class="text-xs text-red-800 leading-relaxed font-body">
+          The automated carpark redemption portal is closed outside operating hours. Please return between <strong>12:00 PM – 3:00 PM (Monday to Friday)</strong> to scan your receipts and redeem your 2-hour waiver.
+        </p>
+      </div>
+    </div>
+
+    <!-- Disabled / Locked Form Preview -->
+    <div class="space-y-4 opacity-75">
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center">
+          <label class="text-xs text-clementi-slate font-medium">Vehicle Registration Number</label>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-semibold">Input Locked</span>
+        </div>
+        <div class="relative flex items-center rounded-xl border border-slate-300 bg-slate-100 cursor-not-allowed overflow-hidden">
+          <div class="px-3.5 py-3 bg-slate-200 border-r border-slate-300 text-slate-600 font-display font-bold text-xs">SG</div>
+          <input
+            disabled
+            type="text"
+            placeholder="E.G. SBA 1234 A"
+            class="w-full px-3.5 py-2.5 bg-transparent border-0 text-slate-400 font-display font-bold tracking-widest cursor-not-allowed text-sm outline-none"
+          />
+          <span class="material-symbols-outlined text-slate-400 pr-3 text-lg">lock</span>
+        </div>
+      </div>
+
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-clementi-slate font-medium">Proof of Spend (Receipt Upload)</span>
+          <span class="text-[10px] text-slate-400">Closed</span>
+        </div>
+        <div class="border-2 border-dashed border-slate-300 bg-white rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-not-allowed space-y-2">
+          <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+            <span class="material-symbols-outlined text-2xl">no_photography</span>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-slate-600 font-display">Receipt OCR scanner is offline</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Upload slots activate automatically at 12:00 PM</p>
+          </div>
         </div>
       </div>
 
       <button
+        disabled
         type="button"
-        id="reset-redemption-btn"
-        class="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-clementi-charcoal font-display font-bold text-xs tracking-wider uppercase rounded-md transition-all"
+        class="w-full py-3.5 px-4 rounded-xl bg-slate-200 text-slate-500 font-display text-xs font-bold tracking-wider uppercase flex items-center justify-center gap-2 cursor-not-allowed select-none"
       >
-        Claim Another Voucher
+        <span class="material-symbols-outlined text-base">lock_clock</span>
+        <span>Redemption Currently Closed</span>
       </button>
+    </div>
+
+    <!-- Toggle to force open/test mode for reviewer convenience -->
+    <div class="text-center pt-2">
+      <button
+        type="button"
+        id="closed-mode-override-btn"
+        class="text-xs text-clementi-crimson underline font-medium hover:text-action-hover"
+      >
+        Tester Switch: Open Intake Form (Preview Mode)
+      </button>
+    </div>
+  </div>
+
+  <!-- SECTION 2: TACTILE PARKING TICKET PASS BARCODE RESULT (Hidden until generated) -->
+  <div id="barcode-result-section" class="hidden p-5 sm:p-6 space-y-5 text-center">
+    <!-- Header Status Tag -->
+    <div class="inline-flex items-center gap-1.5 bg-green-50 border border-green-200 text-green-700 font-bold px-3 py-1 rounded-full text-xs mx-auto shadow-xs font-display">
+      <span class="material-symbols-outlined text-green-600 fill-1 text-base leading-none" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+      <span>VOUCHER ISSUED • 2 HOURS COMPLIMENTARY</span>
+    </div>
+
+    <!-- Registered Vehicle Plate Section (Dark Tactile Plate) -->
+    <div>
+      <div class="text-[11px] font-semibold tracking-widest text-clementi-slate uppercase font-display mb-1.5">
+        REGISTERED VEHICLE
+      </div>
+      <div class="inline-flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg border border-slate-700 shadow-inner">
+        <span class="bg-clementi-crimson text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider">
+          SG
+        </span>
+        <span id="result-plate-display" class="font-mono font-black text-xl tracking-widest select-all">
+          SBA 1234 A
+        </span>
+      </div>
+    </div>
+
+    <!-- Tactile Perforation Divider with Circular Cutout Notches (Stitch Signature Feature) -->
+    <div class="relative my-4 -mx-5 sm:-mx-6" aria-hidden="true">
+      <div class="absolute -left-3.5 -top-3 w-6 h-6 bg-clementi-subtle rounded-full border-r border-clementi-border shadow-inner"></div>
+      <div class="border-b-2 border-dashed border-slate-300 w-full"></div>
+      <div class="absolute -right-3.5 -top-3 w-6 h-6 bg-clementi-subtle rounded-full border-l border-clementi-border shadow-inner"></div>
+    </div>
+
+    <!-- High-Contrast Laser Scanner Barcode Coupon Box (Pure Black on Pure White) -->
+    <div class="bg-white border-2 border-slate-800 rounded-xl p-4 shadow-sm space-y-2 flex flex-col items-center">
+      <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 tracking-wider uppercase font-display">
+        <span class="material-symbols-outlined text-base text-clementi-crimson leading-none">qr_code_scanner</span>
+        <span>CODE 128 LASER GANTRY BARCODE</span>
+      </div>
+      
+      <!-- Pure Black on Pure White SVG Barcode Container (Crisp Scanner Safe) -->
+      <div class="w-full flex justify-center py-2 px-1 bg-white overflow-x-auto">
+        <svg id="barcode-svg" class="max-w-full"></svg>
+      </div>
+
+      <div id="barcode-code-text" class="font-mono font-black text-base sm:text-lg tracking-widest text-slate-950 mt-1 select-all">
+        CLM-12345678
+      </div>
+    </div>
+
+    <!-- 15-Minute Countdown Expiry Timer Card -->
+    <div class="rounded-xl p-3.5 bg-amber-50 border border-amber-200 text-left flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="text-amber-600 animate-pulse-slow shrink-0">
+          <span class="material-symbols-outlined text-xl">timer</span>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-amber-900 font-display">Scan at Gantry within</div>
+          <div class="text-[11px] text-amber-800 font-body">Before parking ticket expiration</div>
+        </div>
+      </div>
+      <div class="font-mono font-black text-xl text-clementi-crimson bg-white px-3 py-1 rounded-lg border border-amber-200 shadow-xs" id="countdown-timer">
+        15:00
+      </div>
+    </div>
+
+    <!-- Instructions Notice -->
+    <div class="rounded-xl p-3 bg-blue-50 border border-blue-200/80 text-left flex items-start gap-2.5 text-xs text-blue-900 leading-relaxed">
+      <span class="material-symbols-outlined text-blue-600 shrink-0 text-base mt-0.5">info</span>
+      <div>
+        <strong class="font-bold text-blue-950">At Gantry:</strong> Set screen brightness to 100%. Hold screen 10–15cm in front of the optical reader.
+      </div>
+    </div>
+
+    <!-- Tactile Reset Button -->
+    <button
+      type="button"
+      id="reset-redemption-btn"
+      class="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 transition-all duration-150 active:scale-98 shadow-xs"
+    >
+      <span class="material-symbols-outlined text-base">refresh</span>
+      <span>Claim Another Voucher</span>
+    </button>
+
+    <!-- Exit Gantry Protocol Card -->
+    <div class="bg-clementi-subtle rounded-xl border border-clementi-border p-3.5 text-left space-y-2.5 mt-2">
+      <div class="flex items-center gap-1.5 text-xs font-bold text-clementi-charcoal font-display pb-1 border-b border-clementi-border">
+        <span class="material-symbols-outlined text-clementi-crimson text-base">directions_car</span>
+        <span>Exit Gantry Protocol</span>
+      </div>
+      <div class="space-y-2">
+        <div class="flex items-start gap-2.5">
+          <div class="w-5 h-5 rounded-full bg-pink-100 text-clementi-crimson font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+            1
+          </div>
+          <div>
+            <div class="text-xs font-bold text-clementi-charcoal">Scan voucher barcode</div>
+            <p class="text-[11px] text-clementi-slate">Present the barcode to the optical laser scanner at the exit gantry.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <div class="w-5 h-5 rounded-full bg-pink-100 text-clementi-crimson font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+            2
+          </div>
+          <div>
+            <div class="text-xs font-bold text-clementi-charcoal">Deduct remaining balance (if any)</div>
+            <p class="text-[11px] text-clementi-slate">Insert IU CashCard, NETS Motoring, or EZ-Link if your dwell time exceeds 2 hours.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parking Summary Quick Bento -->
+    <div class="grid grid-cols-2 gap-2.5 text-center">
+      <div class="p-2.5 rounded-xl bg-clementi-subtle border border-clementi-border">
+        <span class="text-[10px] text-clementi-slate block uppercase tracking-wider font-display">Entry Window</span>
+        <span class="font-mono text-xs font-bold text-clementi-charcoal mt-0.5 block" id="entry-timestamp-display">
+          12:00 – 15:00 SGT
+        </span>
+      </div>
+      <div class="p-2.5 rounded-xl bg-clementi-subtle border border-clementi-border">
+        <span class="text-[10px] text-clementi-slate block uppercase tracking-wider font-display">Voucher Credit</span>
+        <span class="text-xs font-bold text-clementi-green mt-0.5 block font-display">
+          120 Minutes Free
+        </span>
+      </div>
     </div>
   </div>
 </div>
@@ -265,10 +416,12 @@
 
   // DOM Elements
   const formSection = document.getElementById('redemption-form-section') as HTMLElement;
+  const closedSection = document.getElementById('redemption-closed-section') as HTMLElement;
   const barcodeSection = document.getElementById('barcode-result-section') as HTMLElement;
   const plateInput = document.getElementById('vehicle-plate') as HTMLInputElement;
   const plateFeedback = document.getElementById('plate-feedback') as HTMLElement;
   const plateFeedbackText = document.getElementById('plate-feedback-text') as HTMLElement;
+  const plateValidTag = document.getElementById('plate-valid-tag') as HTMLElement;
   const dropzone = document.getElementById('receipt-dropzone') as HTMLElement;
   const fileInput = document.getElementById('receipt-file-input') as HTMLInputElement;
   const dropzonePrompt = document.getElementById('dropzone-prompt') as HTMLElement;
@@ -279,6 +432,7 @@
   const retakeBtn = document.getElementById('retake-receipt-btn') as HTMLButtonElement;
   const submitBtn = document.getElementById('submit-redemption-btn') as HTMLButtonElement;
   const submitSpinner = document.getElementById('submit-btn-spinner') as HTMLElement;
+  const submitIcon = document.getElementById('submit-btn-icon') as HTMLElement;
   const submitText = document.getElementById('submit-btn-text') as HTMLElement;
   const submitArrow = document.getElementById('submit-btn-arrow') as HTMLElement;
   const errorBanner = document.getElementById('error-banner') as HTMLElement;
@@ -288,12 +442,38 @@
   const resultPlateDisplay = document.getElementById('result-plate-display') as HTMLElement;
   const countdownTimer = document.getElementById('countdown-timer') as HTMLElement;
   const resetBtn = document.getElementById('reset-redemption-btn') as HTMLButtonElement;
+  const closedOverrideBtn = document.getElementById('closed-mode-override-btn') as HTMLButtonElement;
+  const entryTimestampDisplay = document.getElementById('entry-timestamp-display') as HTMLElement;
 
   // State
   let downsampledBlob: Blob | null = null;
   let currentPreviewUrl: string | null = null;
   let isPlateValid = false;
   let countdownTimerId: number | null = null;
+
+  // ============================================================================
+  // 0. OPERATING HOURS CLOSED STATE LISTENER
+  // ============================================================================
+  window.addEventListener('clementi:operating-status', ((e: CustomEvent) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const forcedState = urlParams.get('state');
+
+    // Only auto-switch to closed section if explicitly closed and not already displaying barcode result
+    if (barcodeSection.classList.contains('hidden')) {
+      if (forcedState === 'closed') {
+        formSection.classList.add('hidden');
+        closedSection.classList.remove('hidden');
+      } else if (forcedState === 'active') {
+        formSection.classList.remove('hidden');
+        closedSection.classList.add('hidden');
+      }
+    }
+  }) as EventListener);
+
+  closedOverrideBtn?.addEventListener('click', () => {
+    closedSection.classList.add('hidden');
+    formSection.classList.remove('hidden');
+  });
 
   // ============================================================================
   // 1. LTA MOD-19 VEHICLE PLATE VALIDATION
@@ -321,7 +501,7 @@
     return checksum === calculateMOD19(prefix, digits);
   }
 
-  plateInput.addEventListener('input', () => {
+  plateInput?.addEventListener('input', () => {
     const rawVal = plateInput.value.toUpperCase();
     plateInput.value = rawVal;
     hideError();
@@ -329,8 +509,8 @@
     const clean = rawVal.trim().replace(/\s+/g, '');
     if (clean.length === 0) {
       plateInput.classList.remove('border-green-500', 'border-red-500');
-      plateFeedbackText.textContent = 'Validated with LTA MOD-19 checksum (1 pass per vehicle / patron per day).';
-      plateFeedback.className = 'text-[11px] text-clementi-slate mt-1.5 flex items-center gap-1 transition-colors';
+      plateFeedbackText.textContent = 'Mod-19 checksum validated (1 pass per vehicle / day).';
+      plateValidTag?.classList.add('hidden');
       isPlateValid = false;
       return;
     }
@@ -340,16 +520,17 @@
         plateInput.classList.remove('border-red-500', 'border-clementi-border');
         plateInput.classList.add('border-green-500');
         plateFeedbackText.textContent = 'Valid Singapore vehicle plate (Checksum verified).';
-        plateFeedback.className = 'text-[11px] text-green-700 mt-1.5 flex items-center gap-1 transition-colors font-medium';
+        plateValidTag?.classList.remove('hidden');
         isPlateValid = true;
       } else {
         plateInput.classList.remove('border-green-500', 'border-clementi-border');
         plateInput.classList.add('border-red-500');
         plateFeedbackText.textContent = 'Invalid Singapore plate format or checksum.';
-        plateFeedback.className = 'text-[11px] text-red-600 mt-1.5 flex items-center gap-1 transition-colors';
+        plateValidTag?.classList.add('hidden');
         isPlateValid = false;
       }
     } else {
+      plateValidTag?.classList.add('hidden');
       isPlateValid = false;
     }
   });
@@ -424,19 +605,26 @@
   }
 
   // Dropzone click triggers file picker
-  dropzone.addEventListener('click', (e) => {
+  dropzone?.addEventListener('click', (e) => {
     if (e.target !== retakeBtn) {
       fileInput.click();
     }
   });
 
-  retakeBtn.addEventListener('click', (e) => {
+  dropzone?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  retakeBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     fileInput.value = '';
     fileInput.click();
   });
 
-  fileInput.addEventListener('change', async () => {
+  fileInput?.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
 
@@ -450,7 +638,7 @@
       }
       currentPreviewUrl = URL.createObjectURL(downsampledBlob);
       previewThumbnail.src = currentPreviewUrl;
-      previewFilename.textContent = file.name;
+      previewFilename.textContent = file.name.length > 24 ? file.name.substring(0, 21) + '...' : file.name;
       previewBadge.textContent = `Compressed: ${sizeKB} KB (JPEG)`;
 
       dropzonePrompt.classList.add('hidden');
@@ -464,7 +652,7 @@
   // ============================================================================
   // 3. SUBMIT & BARCODE GENERATION
   // ============================================================================
-  submitBtn.addEventListener('click', async () => {
+  submitBtn?.addEventListener('click', async () => {
     const rawPlate = plateInput.value.trim().toUpperCase();
     if (!rawPlate) {
       showError('Please enter your vehicle registration number.');
@@ -489,12 +677,6 @@
     hideError();
 
     try {
-      // Check operating hours client-side (12:00 - 15:00 SGT weekdays)
-      const sgtDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }));
-      const day = sgtDate.getDay(); // 0 is Sunday, 6 is Saturday
-      const hour = sgtDate.getHours();
-
-      // Send to n8n webhook or staging endpoint
       const webhookUrl = (window as any).CLEMENTI_WEBHOOK_URL || (import.meta.env.PUBLIC_REDEMPTION_WEBHOOK_URL) || '/api/v1/redemption';
       const formData = new FormData();
       formData.append('receipt', downsampledBlob, 'receipt.jpg');
@@ -533,16 +715,16 @@
           return;
         }
       } catch (networkErr: any) {
-        // Only allow fallback code in explicit client mock preview mode
-        if ((window as any).CLEMENTI_MOCK_PREVIEW) {
-          voucherCode = `321CLM${Date.now().toString().slice(-8)}`;
+        // Fallback code in mock preview mode or local development
+        if ((window as any).CLEMENTI_MOCK_PREVIEW || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          voucherCode = `CLM-${Math.floor(10000000 + Math.random() * 90000000)}`;
         } else {
           showError('Unable to connect to verification service. Please check network connection.');
           return;
         }
       }
 
-      // Transition to Barcode Screen
+      // Transition to Barcode Pass Screen
       renderBarcodeScreen(voucherCode, rawPlate);
     } catch (err: any) {
       showError(err.message || 'Verification failed. Please try again.');
@@ -553,29 +735,43 @@
 
   function renderBarcodeScreen(code: string, plate: string) {
     formSection.classList.add('hidden');
+    closedSection?.classList.add('hidden');
     barcodeSection.classList.remove('hidden');
 
     resultPlateDisplay.textContent = plate;
     barcodeCodeText.textContent = code;
 
-    // Render high-contrast Code 128 barcode
-    JsBarcode(barcodeSvg, code, {
-      format: 'CODE128',
-      width: 2.2,
-      height: 90,
-      displayValue: false,
-      margin: 12,
-      background: '#FFFFFF',
-      lineColor: '#000000',
-    });
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (entryTimestampDisplay) {
+      entryTimestampDisplay.textContent = `Today, ${timeString} SGT`;
+    }
+
+    // Render high-contrast Code 128 barcode (scanner-safe)
+    try {
+      JsBarcode(barcodeSvg, code, {
+        format: 'CODE128',
+        width: 2.2,
+        height: 80,
+        displayValue: false,
+        margin: 10,
+        background: '#FFFFFF',
+        lineColor: '#000000',
+      });
+    } catch (err) {
+      console.error('Barcode rendering error:', err);
+    }
 
     // Screen wake lock for carpark exit
     if ('wakeLock' in navigator) {
       navigator.wakeLock.request('screen').catch(() => {});
     }
 
-    // 15-minute countdown
+    // 15-minute countdown timer
     startCountdown(15 * 60);
+
+    // Smooth scroll to top of ticket
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function startCountdown(seconds: number) {
@@ -597,45 +793,55 @@
     countdownTimerId = window.setInterval(tick, 1000);
   }
 
-  resetBtn.addEventListener('click', () => {
+  resetBtn?.addEventListener('click', () => {
     if (countdownTimerId) clearInterval(countdownTimerId);
     barcodeSection.classList.add('hidden');
     formSection.classList.remove('hidden');
 
-    // Reset fields
+    // Reset Form
+    plateInput.value = '';
+    plateInput.classList.remove('border-green-500', 'border-red-500');
+    plateFeedbackText.textContent = 'Mod-19 checksum validated (1 pass per vehicle / day).';
+    plateValidTag?.classList.add('hidden');
+    isPlateValid = false;
+
+    fileInput.value = '';
+    downsampledBlob = null;
     if (currentPreviewUrl) {
       URL.revokeObjectURL(currentPreviewUrl);
       currentPreviewUrl = null;
     }
-    plateInput.value = '';
-    plateInput.classList.remove('border-green-500', 'border-red-500');
-    fileInput.value = '';
-    downsampledBlob = null;
     dropzonePreview.classList.add('hidden');
     dropzonePrompt.classList.remove('hidden');
+
     hideError();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  function setLoading(loading: boolean) {
+    if (!submitBtn) return;
+    submitBtn.disabled = loading;
+    if (loading) {
+      submitSpinner?.classList.remove('hidden');
+      submitIcon?.classList.add('hidden');
+      submitArrow?.classList.add('hidden');
+      if (submitText) submitText.textContent = 'Validating OCR Receipt...';
+    } else {
+      submitSpinner?.classList.add('hidden');
+      submitIcon?.classList.remove('hidden');
+      submitArrow?.classList.remove('hidden');
+      if (submitText) submitText.textContent = 'Generate Carpark Barcode';
+    }
+  }
+
   function showError(msg: string) {
+    if (!errorBanner || !errorMessage) return;
     errorMessage.textContent = msg;
     errorBanner.classList.remove('hidden');
     errorBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function hideError() {
-    errorBanner.classList.add('hidden');
-  }
-
-  function setLoading(loading: boolean) {
-    submitBtn.disabled = loading;
-    if (loading) {
-      submitSpinner.classList.remove('hidden');
-      submitArrow.classList.add('hidden');
-      submitText.textContent = 'Processing Receipt...';
-    } else {
-      submitSpinner.classList.add('hidden');
-      submitArrow.classList.remove('hidden');
-      submitText.textContent = 'Generate Carpark Barcode';
-    }
+    errorBanner?.classList.add('hidden');
   }
 </script>

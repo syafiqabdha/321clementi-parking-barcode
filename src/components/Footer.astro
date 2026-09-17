@@ -1,60 +1,87 @@
 ---
-// Footer component with official 321 Clementi mall info and terms
+// Footer component with official 321 Clementi mall info and expandable terms
 ---
 
-<footer class="w-full mt-auto border-t border-clementi-border bg-clementi-white py-6 text-center text-xs text-clementi-slate" role="contentinfo">
+<footer
+  id="terms-section"
+  class="w-full mt-auto border-t border-clementi-border bg-clementi-white py-6 text-center text-xs text-clementi-slate"
+  role="contentinfo"
+>
   <div class="max-w-md mx-auto px-4 space-y-4">
-    <!-- Brand wordmark echo in Century Gothic -->
+    <!-- Brand wordmark in Century Gothic -->
     <div class="font-display font-bold text-xs uppercase tracking-wordmark text-clementi-crimson">
       321 C L E M E N T I
     </div>
 
     <!-- Address & Location -->
-    <p class="leading-relaxed">
-      <strong>321 Clementi</strong><br />
+    <p class="leading-relaxed text-[11px] text-clementi-slate">
+      <strong class="text-clementi-charcoal">321 Clementi</strong><br />
       321 Clementi Ave 3, Singapore 129905<br />
-      <span class="text-[11px] text-clementi-slate/80">Carpark Entry via Clementi Ave 3</span>
+      <span class="text-[10px] text-clementi-slate/80">Carpark Entry via Clementi Ave 3 • Managed by Engwah Private Limited</span>
     </p>
 
-    <!-- Official Terms & Conditions (Adapted for Autonomous Mobile Redemption) -->
-    <div class="bg-clementi-subtle rounded-md p-3.5 text-[11px] text-clementi-slate/90 leading-relaxed border border-clementi-border/60 text-left space-y-2">
-      <strong class="text-clementi-charcoal block font-display font-bold text-xs">
-        Promotion Terms & Conditions:
-      </strong>
-      <ol class="list-decimal pl-4 space-y-1">
-        <li>
-          Minimum spend of <strong>$30.00</strong> in a single receipt is required to redeem for <strong>2 hours complimentary parking</strong> on weekdays (12:00 PM – 3:00 PM, excluding public holidays).
-        </li>
-        <li>
-          Redemption is processed directly via this mobile portal on the same day of spend. (No queuing at the Level 3 Information Counter required).
-        </li>
-        <li>
-          Limited to one (1) parking redemption per patron/vehicle per day, regardless of total amount spent.
-        </li>
-        <li>
-          Redemptions are on a first-come-first-served basis and while daily quota lasts.
-        </li>
-        <li>
-          <strong>IU CashCard Notice:</strong> Patrons must remove their CashCard / NETS Motoring Card from the vehicle IU before scanning the barcode at the carpark exit gantry.
-        </li>
-        <li>
-          Patrons enjoy 2 hours free parking. Prevailing carpark charges will apply beyond the stated 2-hour complimentary timing.
-        </li>
-        <li>
-          <strong>Exclusions:</strong> This promotion is <u>not applicable</u> to receipts from <em>Clementi Family & Aesthetic Clinic</em> and <em>GynaeMD Women's Clinic</em>.
-        </li>
-        <li>
-          All prices quoted are in Singapore dollars (SGD).
-        </li>
-        <li>
-          This information is correct at time of issuance and subject to change. The Management reserves the right to withdraw or amend terms without prior notice.
-        </li>
+    <!-- Expandable Terms & Conditions Card (9 clauses) -->
+    <div class="bg-clementi-subtle rounded-xl p-4 text-left border border-clementi-border space-y-2.5">
+      <button
+        type="button"
+        id="toggle-terms-btn"
+        class="w-full flex items-center justify-between cursor-pointer focus:outline-none"
+        aria-expanded="false"
+        aria-controls="terms-list"
+      >
+        <span class="font-display text-xs font-bold text-clementi-charcoal uppercase tracking-wider flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-sm text-clementi-crimson">gavel</span>
+          Terms & Conditions
+        </span>
+        <span class="material-symbols-outlined text-clementi-slate text-base transition-transform" id="terms-arrow">
+          expand_more
+        </span>
+      </button>
+
+      <ol id="terms-list" class="hidden font-body text-[11px] text-clementi-slate space-y-1.5 list-decimal list-inside leading-relaxed pt-1 border-t border-clementi-border/60">
+        <li>Valid exclusively for vehicle entries Mondays to Fridays between 12:00 PM and 3:00 PM, excluding Singapore Public Holidays.</li>
+        <li>Qualifying spend requires a minimum of $30.00 SGD consolidated from a maximum of two (2) same-day receipts.</li>
+        <li>Only official point-of-sale machine-printed receipts with clear merchant GST registration numbers are eligible.</li>
+        <li>Receipts from atrium pop-ups, temporary pushcarts, bill payment kiosks, convenience top-ups, money changers, Clementi Family & Aesthetic Clinic, and GynaeMD Women's Clinic are strictly excluded.</li>
+        <li>Redemption is strictly limited to one (1) 2-hour complimentary parking voucher per vehicle / patron per calendar day.</li>
+        <li>Vouchers are valid only on the date of issue and must be scanned at the gantry exit reader prior to vehicle egress.</li>
+        <li>Prevailing carpark rates will automatically apply for parking durations extending beyond the 2 complimentary hours.</li>
+        <li>Vouchers are strictly non-transferable, non-refundable, and cannot be exchanged for cash, credits, or gift cards.</li>
+        <li>The Management of 321 Clementi reserves the right to amend terms, alter promotional quotas, or reject invalid receipts without prior notice.</li>
       </ol>
     </div>
 
+    <!-- Links from Shared Components Blueprint -->
+    <div class="flex flex-wrap justify-center items-center gap-3 text-[11px] text-clementi-slate pt-1">
+      <a class="hover:text-clementi-crimson transition-colors" href="#terms-section">Terms & Conditions</a>
+      <span>•</span>
+      <a class="hover:text-clementi-crimson transition-colors" href="#carpark-rates-section">Carpark Policy</a>
+      <span>•</span>
+      <a class="hover:text-clementi-crimson transition-colors" href="#terms-section">Privacy Promise</a>
+    </div>
+
     <!-- Copyright -->
-    <p class="text-[10px] text-clementi-slate/60 pt-1">
-      &copy; {new Date().getFullYear()} 321 Clementi. All rights reserved. Powered by Autonomous Redemption Engine.
+    <p class="text-[11px] text-slate-400 pt-1">
+      &copy; {new Date().getFullYear()} Engwah Private Limited • 321 Clementi. All Rights Reserved.
     </p>
   </div>
 </footer>
+
+<script>
+  const toggleBtn = document.getElementById('toggle-terms-btn');
+  const termsList = document.getElementById('terms-list');
+  const termsArrow = document.getElementById('terms-arrow');
+
+  toggleBtn?.addEventListener('click', () => {
+    const isHidden = termsList?.classList.contains('hidden');
+    if (isHidden) {
+      termsList?.classList.remove('hidden');
+      if (termsArrow) termsArrow.textContent = 'expand_less';
+      toggleBtn.setAttribute('aria-expanded', 'true');
+    } else {
+      termsList?.classList.add('hidden');
+      if (termsArrow) termsArrow.textContent = 'expand_more';
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+</script>
