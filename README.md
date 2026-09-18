@@ -45,7 +45,7 @@ Autonomous receipt-to-barcode parking redemption engine for **321 Clementi Mall*
 - **Operating hours gate** — Hard rejection outside 12:00–15:00 SGT on weekdays
 - **Screen wake lock** — Barcode modal requests wake lock so the display stays on at the gantry scanner
 - **Claim history & unclaim** — Shoppers can view past redemptions and unclaim within the allowable state machine window
-- **Admin panel** — Authenticated admin endpoints for shop management and claim history search
+- **Admin endpoints** — Authenticated `POST`/`PATCH`/`DELETE /api/v1/admin/shops` with timing-safe API key verification for merchant directory maintenance
 
 ---
 
@@ -56,11 +56,12 @@ Full OpenAPI 3.1 specification: [`docs/openapi.yaml`](./docs/openapi.yaml)
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/redemptions` | Submit receipt + plate for voucher redemption |
-| `GET` | `/api/v1/redemptions` | Fetch claim history for a plate |
+| `GET` | `/api/v1/redemptions/history` | Fetch claim history for a plate (`?plate=...`) |
 | `POST` | `/api/v1/redemptions/unclaim` | Unclaim a voucher (state-machine gated) |
-| `GET` | `/api/v1/shops` | List registered merchant shops |
-| `GET` | `/api/v1/admin/shops` | Admin: list all shops |
-| `GET` | `/api/v1/admin/history` | Admin: search claim history |
+| `GET` | `/api/v1/shops` | List registered merchant shops (`?eligible_only=false` for all) |
+| `POST` | `/api/v1/admin/shops` | Admin: create a new merchant shop |
+| `PATCH` | `/api/v1/admin/shops` | Admin: update an existing shop |
+| `DELETE` | `/api/v1/admin/shops` | Admin: remove a shop |
 
 ---
 
