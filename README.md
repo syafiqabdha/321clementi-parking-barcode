@@ -104,7 +104,9 @@ bun install
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your DATABASE_URL and webhook URL
+# Edit .env — fill in DATABASE_URL, ADMIN_API_KEY, GEMINI_API_KEY,
+# PLATE_HMAC_SECRET, Cloudflare Turnstile keys, and n8n URLs
+# See the "Environment Variables" table under Deployment for full details
 
 # 3. Apply database migrations
 bun run db:migrate
@@ -150,14 +152,23 @@ bun test
 The mobile web portal is deployed to Vercel as a static Astro 5 build configured via [`vercel.json`](./vercel.json).
 
 #### Environment Variables
-Configure the following environment variables in the Vercel project dashboard or `.env`:
 
-| Variable | Target | Description | Example |
-|---|---|---|---|
-| `PUBLIC_REDEMPTION_WEBHOOK_URL` | Production / Staging | Public HTTPS webhook endpoint for the n8n receipt verification workflow | `https://n8n.pancatz.com/webhook/clementi-redemption` |
-| `DATABASE_URL` | Production (Backend) | PostgreSQL 16 connection URI for database migrations and automation scripts | `postgresql://user:***@host:5432/clementi_redemption` |
-| `NOCODB_URL` | Admin / Internal | NocoDB dashboard URL for administrative voucher management | `https://nocodb.pancatz.com` |
-| `ADMIN_API_KEY` | Backend | Bearer token for admin API endpoints (timing-safe comparison) | `your-secret-key` |
+Copy `.env.example` to `.env` and populate every variable before running the application. All variables are **required** unless marked optional.
+
+| Variable | Required | Context | Description | Example / How to Obtain |
+|---|---|---|---|---|
+| `DATABASE_URL` | ✅ | Backend / Migrations | PostgreSQL 16 connection URI used by the app server and `bun run db:migrate`. | `postgresql://user:password@host:5432/clementi_redemption` |
+| `TEST_DATABASE_URL` | ✅ | CI / Local Tests | Separate PostgreSQL URI for the isolated test database (never the production DB). | `postgresql://postgres:password@localhost:55432/test_clementi` |
+| `PUBLIC_REDEMPTION_WEBHOOK_URL` | ✅ | Frontend (public) | Public HTTPS webhook endpoint exposed to the browser for the n8n receipt verification workflow. Must be an `https://` URL. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
+| `N8N_WEBHOOK_URL` | ✅ | Backend | Server-side n8n webhook URL for internal API-to-n8n calls. Usually the same as `PUBLIC_REDEMPTION_WEBHOOK_URL`; keep separate for network-internal routing. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
+| `PLATE_HMAC_SECRET` | ✅ | Backend (PII) | 64-character cryptographically random hex secret used as HMAC-SHA256 pepper for vehicle plate hashing (PDPA compliance, SEC-05). Generate with: `openssl rand -hex 32` | `a0b1c2d3...` (64 hex chars) |
+| `ADMIN_API_KEY` | ✅ | Backend | Bearer token / API key for admin endpoints (`/api/v1/admin/shops`). Compared with constant-time `timingSafeEqual` (SEC-04). Generate with: `openssl rand -hex 32` | `your-secret-admin-key` |
+| `GEMINI_API_KEY` | ✅ | Backend | Google Gemini 1.5 Flash API key for AI receipt OCR verification (minimum $30 spend + date check). Obtain from [Google AI Studio](https://aistudio.google.com/app/apikey). | `AIza...` |
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | ✅ | Backend | Cloudflare Turnstile server-side secret key for bot protection validation. Obtain from [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com). | `0x4AAAAAAA...` |
+| `PUBLIC_TURNSTILE_SITE_KEY` | ✅ | Frontend (public) | Cloudflare Turnstile client-side site key rendered in the browser widget. Obtain from the same Turnstile site entry as `CLOUDFLARE_TURNSTILE_SECRET_KEY`. | `0x4AAAAAAA...` |
+| `NOCODB_URL` | ✅ | Admin / DevOps | Base URL of the NocoDB instance used by mall management staff to update the `shops` table and by `deploy-nocodb-config.sh` for health checks. Must be `https://`. | `https://nocodb.pancatz.com` |
+| `N8N_RECEIPT_VERIFIER_URL` | Optional | Backend | If set, overrides the direct Gemini API call and routes receipt verification through an n8n workflow instead. Leave blank to use the Gemini SDK directly. | `https://n8n.pancatz.com/webhook/verify-receipt` |
+| `XC_TOKEN` | Optional | DevOps | NocoDB admin API token for `scripts/deploy-nocodb-config.sh` authenticated API checks. Only needed when running the deployment validation script. Obtain from NocoDB → Team & Auth → API Tokens. | `xc-token-...` |
 
 ### CI/CD Automation (GitHub Actions)
 Continuous integration is orchestrated via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) on all PRs and pushes to `main`:
