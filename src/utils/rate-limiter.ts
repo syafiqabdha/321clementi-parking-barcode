@@ -127,11 +127,77 @@ export function checkUnclaimCooldown(redemptionId: string): { allowed: boolean; 
 }
 
 // --- Get client IP from request ---
-
+// PAN-84: Prefer cf-connecting-ip (Cloudflare) over x-forwarded-for to prevent spoofing.
 export function getClientIp(request: Request): string {
+  const cfIp = request.headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp.trim();
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    // Use the rightmost entry that is not a known private/trusted proxy
+    const parts = forwarded.split(',').map(s => s.trim()).filter(Boolean);
+    return parts[parts.length - 1] || '127.0.0.1';
   }
   return '127.0.0.1';
+}
+
+// --- Redemption endpoint rate limiting (PAN-84 / TSK-07) ---
+// Max 3 POST /api/v1/redemptions per IP per 5-minute sliding window.
+
+const redemptionBuckets = new Map<string, RateLimitEntry>();  // IP → bucket
+
+const MAX_REDEMPTIONS_PER_WINDOW = 3;
+const REDEMPTION_WINDOW_MS = 5 * 60_000; // 5 minutes
+
+export function checkRedemptionRateLimit(ip: string): { allowed: boolean; retryAfterMs?: number } {
+  const now = Date.now();
+  pruneExpired(redemptionBuckets);
+
+  const bucket = redemptionBuckets.get(ip);
+
+  if (!bucket || now > bucket.resetAt) {
+    redemptionBuckets.set(ip, { count: 1, resetAt: now + REDEMPTION_WINDOW_MS });
+    return { allowed: true };
+  }
+
+  if (bucket.count >= MAX_REDEMPTIONS_PER_WINDOW) {
+    return { allowed: false, retryAfterMs: bucket.resetAt - now };
+  }
+
+  bucket.count++;
+  return { allowed: true };
+}
+
+/**
+ * Validate a Cloudflare Turnstile token against the siteverify API.
+ * Returns true when the token is valid. Always false when the secret key is missing.
+ */
+export async function verifyTurnstileToken(
+  token: string | null,
+  remoteIp: string
+): Promise<{ success: boolean; errorCodes?: string[] }> {
+  const secret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
+  if (!secret) {
+    // In development without Turnstile configured: bypass (fail-open only in dev)
+    if (process.env.NODE_ENV !== 'production') return { success: true };
+    return { success: false, errorCodes: ['missing-secret-key'] };
+  }
+  if (!token) return { success: false, errorCodes: ['missing-input-response'] };
+
+  try {
+    const body = new URLSearchParams({
+      secret,
+      response: token,
+      remoteip: remoteIp,
+    });
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(5_000),
+    });
+    const data = await resp.json() as any;
+    return { success: data.success === true, errorCodes: data['error-codes'] };
+  } catch {
+    return { success: false, errorCodes: ['network-error'] };
+  }
 }

@@ -1,6 +1,9 @@
 /**
  * 321 Clementi Smart Parking Redemption Engine
- * Canonical Plate Normalization Test Suite (ADR-001 / PAN-76 / PAN-79)
+ * Canonical Plate Normalization Test Suite (ADR-001 / PAN-76 / PAN-79 / PAN-84)
+ *
+ * PAN-84 change: normalizeCarPlate now strips ALL whitespace (space-invariant canonical key).
+ * All formerly-spaced expectations updated to space-free equivalents.
  */
 
 import { describe, test, expect } from 'bun:test';
@@ -12,38 +15,38 @@ describe('Plate Normalization Contract (ADR-001)', () => {
       expect(normalizeCarPlate('sgp1234a')).toBe('SGP1234A');
     });
 
-    test('Trims surrounding whitespace from spaced plate', () => {
-      expect(normalizeCarPlate('  SGP 1234 A  ')).toBe('SGP 1234 A');
+    test('Trims surrounding whitespace and strips internal spaces (PAN-84)', () => {
+      expect(normalizeCarPlate('  SGP 1234 A  ')).toBe('SGP1234A');
     });
 
-    test('Collapses multiple consecutive internal spaces to single space', () => {
-      expect(normalizeCarPlate('sgp    1234   a')).toBe('SGP 1234 A');
+    test('Collapses and strips multiple consecutive internal spaces (PAN-84)', () => {
+      expect(normalizeCarPlate('sgp    1234   a')).toBe('SGP1234A');
     });
 
-    test('Handles single-space spaced plate', () => {
-      expect(normalizeCarPlate('SBA 1234 A')).toBe('SBA 1234 A');
+    test('Strips single-space from spaced plate (PAN-84)', () => {
+      expect(normalizeCarPlate('SBA 1234 A')).toBe('SBA1234A');
     });
 
-    test('Handles mixed case with irregular whitespace', () => {
-      expect(normalizeCarPlate('\t sBa   9999 z \n')).toBe('SBA 9999 Z');
+    test('Handles mixed case with irregular whitespace — strips all (PAN-84)', () => {
+      expect(normalizeCarPlate('\t sBa   9999 z \n')).toBe('SBA9999Z');
     });
   });
 
   describe('Malaysian & Foreign Vehicle Plates', () => {
-    test('Accepts Johor plate format (JQR 1234)', () => {
-      expect(normalizeCarPlate('jqr 1234')).toBe('JQR 1234');
+    test('Accepts Johor plate format (JQR1234) — strips space (PAN-84)', () => {
+      expect(normalizeCarPlate('jqr 1234')).toBe('JQR1234');
     });
 
-    test('Accepts Kuala Lumpur plate format (W 1234 A)', () => {
-      expect(normalizeCarPlate('w 1234 a')).toBe('W 1234 A');
+    test('Accepts Kuala Lumpur plate format (W1234A) — strips spaces (PAN-84)', () => {
+      expect(normalizeCarPlate('w 1234 a')).toBe('W1234A');
     });
 
-    test('Accepts Penang plate format (PBA 5678)', () => {
-      expect(normalizeCarPlate('  pba 5678  ')).toBe('PBA 5678');
+    test('Accepts Penang plate format (PBA5678) — strips spaces (PAN-84)', () => {
+      expect(normalizeCarPlate('  pba 5678  ')).toBe('PBA5678');
     });
 
-    test('Accepts Diplomatic Corps plates (CD 12 34)', () => {
-      expect(normalizeCarPlate('cd 12 34')).toBe('CD 12 34');
+    test('Accepts Diplomatic Corps plates (CD1234) — strips spaces (PAN-84)', () => {
+      expect(normalizeCarPlate('cd 12 34')).toBe('CD1234');
     });
   });
 
@@ -53,10 +56,10 @@ describe('Plate Normalization Contract (ADR-001)', () => {
       expect(normalizeCarPlate(input)).toBe('SBA1234A');
     });
 
-    test('Performs NFKC normalization on full-width characters', () => {
+    test('Performs NFKC normalization on full-width characters, strips spaces (PAN-84)', () => {
       // Full-width Latin: ＳＢＡ １２３４ Ａ
       const fullWidth = '\uFF33\uFF22\uFF21 \uFF11\uFF12\uFF13\uFF14 \uFF21';
-      expect(normalizeCarPlate(fullWidth)).toBe('SBA 1234 A');
+      expect(normalizeCarPlate(fullWidth)).toBe('SBA1234A');
     });
 
     test('Rejects plates with emojis', () => {
@@ -137,14 +140,18 @@ describe('Plate Normalization Contract (ADR-001)', () => {
     });
   });
 
-  describe('Canonical Identity Invariance (History Lookup Key Consistency)', () => {
-    test('All representations of the same vehicle plate produce identical canonical keys', () => {
+  describe('Canonical Identity Invariance (History Lookup Key Consistency) — PAN-84', () => {
+    test('All representations of the same vehicle plate (with or without spaces) produce identical canonical keys', () => {
       const variants = [
         'sba1234a',
         'SBA1234A',
         '  sba1234a  ',
         '\tsba1234a\n',
         'SBA\u200B1234A',
+        'SBA 1234 A',       // now also strips spaces
+        'sba 1234 a',
+        '  sba   1234   a  ',
+        '\tsba  1234  a\t',
       ];
       const expected = 'SBA1234A';
       for (const variant of variants) {
@@ -152,17 +159,11 @@ describe('Plate Normalization Contract (ADR-001)', () => {
       }
     });
 
-    test('Spaced variants consistently collapse to single-space representation', () => {
-      const variants = [
-        'SBA 1234 A',
-        'sba 1234 a',
-        '  sba   1234   a  ',
-        '\tsba  1234  a\t',
-      ];
-      const expected = 'SBA 1234 A';
-      for (const variant of variants) {
-        expect(normalizeCarPlate(variant)).toBe(expected);
-      }
+    test('Space-stripped result is always the same regardless of input spacing', () => {
+      const spaced = normalizeCarPlate('SBA 1234 A');
+      const unspaced = normalizeCarPlate('SBA1234A');
+      expect(spaced).toBe(unspaced);
+      expect(spaced).toBe('SBA1234A');
     });
   });
 });

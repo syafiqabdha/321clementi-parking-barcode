@@ -21,6 +21,7 @@ WHERE status = 'AVAILABLE';
 
 /**
  * Atomic voucher allocation with plain-text plate, shop_id, claim_token_hash.
+ * PAN-84: Added receipt_hash ($10), receipt_number ($11), receipt_fingerprint_hash ($12).
  * Returns allocated voucher details and inserted redemption log id.
  */
 export const ATOMIC_ALLOCATION_CTE = `
@@ -55,12 +56,15 @@ inserted_log AS (
         claim_token_hash,
         ip_address,
         user_agent,
+        receipt_hash,
+        receipt_number,
+        receipt_fingerprint_hash,
         created_at
     )
     SELECT
         $2, $1, $3, $4, $5, $6::uuid,
         rv.voucher_code, 'CLAIMED', $7,
-        $8::inet, $9, NOW()
+        $8::inet, $9, $10, $11, $12, NOW()
     FROM reserved_voucher rv
     RETURNING id, voucher_code
 )
@@ -76,11 +80,31 @@ CROSS JOIN inserted_log il;
 // Daily Limit Check
 // ============================================================================
 
-/** Check if vehicle plate already has a CLAIMED redemption today. */
+/** Check if vehicle plate already has a CLAIMED redemption today (PAN-84: space-invariant). */
 export const CHECK_DAILY_REDEMPTION_QUERY = `
 SELECT id, voucher_code, created_at
 FROM redemption_logs
-WHERE vehicle_plate = $1
+WHERE REPLACE(UPPER(vehicle_plate), ' ', '') = REPLACE(UPPER($1), ' ', '')
+  AND receipt_date = $2
+  AND status = 'CLAIMED'
+LIMIT 1;
+`;
+
+/** Check if a receipt image hash has already been used today (PAN-84: duplicate prevention). */
+export const CHECK_RECEIPT_HASH_QUERY = `
+SELECT id, vehicle_plate, created_at
+FROM redemption_logs
+WHERE receipt_hash = $1
+  AND receipt_date = $2
+  AND status = 'CLAIMED'
+LIMIT 1;
+`;
+
+/** Check if a receipt fingerprint has already been used today (PAN-84: semantic dedup). */
+export const CHECK_RECEIPT_FINGERPRINT_QUERY = `
+SELECT id, vehicle_plate, created_at
+FROM redemption_logs
+WHERE receipt_fingerprint_hash = $1
   AND receipt_date = $2
   AND status = 'CLAIMED'
 LIMIT 1;
@@ -148,7 +172,7 @@ RETURNING id;
 // Claim History Queries
 // ============================================================================
 
-/** Get redemption history for a vehicle plate. */
+/** Get redemption history for a vehicle plate (PAN-84: space-invariant lookup). */
 export const GET_PLATE_HISTORY_QUERY = `
 SELECT 
     rl.id,
@@ -164,11 +188,11 @@ SELECT
     -- Claim is still active if CLAIMED and within 2-hour window
     (rl.status = 'CLAIMED' AND rl.created_at >= NOW() - INTERVAL '2 hours') AS can_unclaim,
     (rl.status = 'CLAIMED') AS can_resume,
-    rl.created_at + INTERVAL '15 minutes' AS expires_at
+    rl.created_at + INTERVAL '2 hours' AS expires_at
 FROM redemption_logs rl
 LEFT JOIN shops s ON rl.shop_id = s.id
 LEFT JOIN voucher_pool vp ON rl.voucher_code = vp.voucher_code
-WHERE rl.vehicle_plate = $1
+WHERE REPLACE(UPPER(rl.vehicle_plate), ' ', '') = REPLACE(UPPER($1), ' ', '')
 ORDER BY rl.created_at DESC
 LIMIT 50;
 `;
