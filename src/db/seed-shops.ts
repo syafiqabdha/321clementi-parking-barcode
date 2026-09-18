@@ -6,7 +6,7 @@
  *   - 27 scraped rows → 26 DB records (duplicate "Carpark" B1/B2 collapsed into one)
  *   - Non-retail facilities: is_active=false, is_eligible=false
  *   - Mall-excluded tenants: is_active=false, is_eligible=false
- *   - 22 active, eligible stores visible to shoppers
+ *   - 21 active, eligible stores visible to shoppers
  */
 
 export interface ShopSeed {

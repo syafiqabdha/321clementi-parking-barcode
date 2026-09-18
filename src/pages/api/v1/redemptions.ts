@@ -57,11 +57,38 @@ export const POST: APIRoute = async ({ request }) => {
 
     const sql = getDb();
 
+    // Resolve shopId: accept UUIDs directly, resolve slug-based synthetic IDs via slug lookup
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let resolvedShopId = shopId;
+    if (!UUID_RE.test(shopId)) {
+      // Synthetic ID from offline fallback (e.g. "shop-huang-tu-di")
+      const slugPrefix = shopId.startsWith('shop-') ? shopId.slice(5) : shopId;
+      const resolved = await sql`
+        SELECT id, name, is_active, is_eligible
+        FROM shops
+        WHERE slug ILIKE ${slugPrefix + '%'}
+        LIMIT 2
+      `;
+      if (resolved.length === 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'INVALID_SHOP', message: 'Selected shop does not exist.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (resolved.length > 1) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'AMBIGUOUS_SHOP', message: 'Shop identifier matches multiple stores.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      resolvedShopId = (resolved[0] as any).id;
+    }
+
     // Verify shop exists and is eligible
     const shopRows = await sql`
       SELECT id, name, is_active, is_eligible
       FROM shops
-      WHERE id = ${shopId}::uuid
+      WHERE id = ${resolvedShopId}::uuid
     `;
     if (shopRows.length === 0) {
       return new Response(
@@ -155,7 +182,7 @@ export const POST: APIRoute = async ({ request }) => {
         ua,
         true,
         null,
-        JSON.stringify({ shop_id: shopId, shop_name: shop.name }),
+        JSON.stringify({ shop_id: resolvedShopId, shop_name: shop.name }),
       ]);
     } catch {
       // Best-effort audit logging

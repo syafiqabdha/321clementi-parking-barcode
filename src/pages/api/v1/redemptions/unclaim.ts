@@ -104,7 +104,22 @@ export const POST: APIRoute = async ({ request }) => {
 
       const vehiclePlate = body.vehicle_plate;
       const receiptAmount = body.receipt_amount;
-      const shopId = body.shop_id;
+      const shopIdInput = body.shop_id;
+
+      // Resolve synthetic shop ID from offline fallback to real UUID
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let resolvedShopId = shopIdInput;
+      if (shopIdInput && !UUID_RE.test(shopIdInput)) {
+        const slugPrefix = shopIdInput.startsWith('shop-') ? shopIdInput.slice(5) : shopIdInput;
+        const resolved = await sql`
+          SELECT id FROM shops
+          WHERE slug ILIKE ${slugPrefix + '%'}
+          LIMIT 2
+        `;
+        if (resolved.length === 1) {
+          resolvedShopId = (resolved[0] as any).id;
+        }
+      }
 
       // Normalize plate
       let canonicalInput = '';
@@ -118,7 +133,7 @@ export const POST: APIRoute = async ({ request }) => {
         canonicalInput === redemption.vehicle_plate &&
         receiptAmount !== undefined &&
         Math.abs(Number(receiptAmount) - Number(redemption.receipt_amount)) < 0.01 &&
-        shopId === redemption.shop_id
+        resolvedShopId === redemption.shop_id
       ) {
         authorized = true;
       }
