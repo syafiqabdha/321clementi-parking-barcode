@@ -39,14 +39,16 @@ export interface ShopItem {
 
 /**
  * Claim history record returned to user UI (ADR-001)
+ * receipt_amount and shop_name may be null when the claim token is not provided/invalid (SEC-02/03).
+ * can_resume is false when the token is invalid (SEC-03).
  */
 export interface ClaimHistoryRecord {
   id: string;
   voucher_code: string;
   barcode_format: string;
-  receipt_amount: number;
+  receipt_amount: number | null;
   receipt_date: string;
-  shop_name: string;
+  shop_name: string | null;
   status: 'CLAIMED' | 'UNCLAIMED' | 'RE_REDEEMED' | 'EXPIRED';
   can_unclaim: boolean;
   can_resume: boolean;

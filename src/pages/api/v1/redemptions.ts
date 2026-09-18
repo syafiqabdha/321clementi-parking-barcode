@@ -145,7 +145,7 @@ export const POST: APIRoute = async ({ request }) => {
         receiptAmount,    // $3
         receiptDate,      // $4
         tenantName,       // $5
-        shopId,           // $6
+        resolvedShopId,   // $6
         claimTokenHash,   // $7
         ip,               // $8
         ua,               // $9

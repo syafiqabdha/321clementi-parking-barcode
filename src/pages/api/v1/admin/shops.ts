@@ -7,6 +7,7 @@
  */
 
 import type { APIRoute } from 'astro';
+import { timingSafeEqual } from 'node:crypto';
 import { getDb } from '../../../../db/connection';
 import { INSERT_SHOP_QUERY, UPDATE_SHOP_QUERY, DELETE_SHOP_QUERY } from '../../../../db/queries';
 
@@ -15,9 +16,20 @@ function isAuthorized(request: Request): boolean {
   const auth = request.headers.get('Authorization');
   const expectedKey = process.env.ADMIN_API_KEY;
   if (!expectedKey) return false;
-  if (adminKey === expectedKey) return true;
-  if (auth === `Bearer ${expectedKey}`) return true;
-  return false;
+
+  const expected = Buffer.from(expectedKey, 'utf8');
+
+  function safeCompare(candidate: string | null): boolean {
+    if (!candidate) return false;
+    const candidateBuf = Buffer.from(candidate, 'utf8');
+    if (candidateBuf.length !== expected.length) return false;
+    return timingSafeEqual(candidateBuf, expected);
+  }
+
+  const bearerPrefix = 'Bearer ';
+  const bearerToken = auth?.startsWith(bearerPrefix) ? auth.slice(bearerPrefix.length) : null;
+
+  return safeCompare(adminKey) || safeCompare(bearerToken);
 }
 
 function slugify(name: string): string {
