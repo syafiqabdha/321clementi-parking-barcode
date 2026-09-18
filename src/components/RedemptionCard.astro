@@ -35,7 +35,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         Claim Parking Voucher
       </h2>
       <p class="text-xs sm:text-sm text-clementi-slate mt-1 font-body leading-relaxed">
-        Enter your vehicle plate number, select your store, and submit your same-day qualifying receipt to receive an instant optical Code 128 exit barcode.
+        Enter your vehicle plate number, select your store, and snap your same-day qualifying receipt to receive an instant 2-hour free parking voucher barcode to scan at the exit gantry.
       </p>
     </div>
 
@@ -64,7 +64,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
             type="text"
             id="vehicle-plate"
             name="vehiclePlate"
-            placeholder="e.g. SBA 1234 A, JQR 1234, CD 12 34"
+            placeholder="e.g. SBA1234A, JQR1234, CD1234"
             maxlength="16"
             autocomplete="off"
             autocapitalize="characters"
@@ -315,7 +315,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       <div class="flex items-center justify-between w-full text-[11px] font-bold text-slate-700 tracking-wider uppercase font-display">
         <div class="flex items-center gap-1.5">
           <span class="material-symbols-outlined text-base text-clementi-crimson leading-none">qr_code_scanner</span>
-          <span>CODE 128 LASER GANTRY BARCODE</span>
+          <span>PARKING VOUCHER BARCODE</span>
         </div>
         <span class="text-[10px] text-clementi-crimson font-bold bg-pink-50 px-2 py-0.5 rounded flex items-center gap-1 group-hover:scale-105 transition-transform">
           <span class="material-symbols-outlined text-xs">zoom_in</span> Tap to Enlarge
@@ -332,19 +332,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       </div>
     </div>
 
-    <!-- 15-Minute Countdown Expiry Timer Card -->
-    <div class="rounded-xl p-3.5 bg-amber-50 border border-amber-200 text-left flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="text-amber-600 animate-pulse-slow shrink-0">
-          <span class="material-symbols-outlined text-xl">timer</span>
-        </div>
-        <div>
-          <div class="text-xs font-bold text-amber-900 font-display">Scan at Gantry within</div>
-          <div class="text-[11px] text-amber-800 font-body">Before parking ticket expiration</div>
-        </div>
+    <!-- EOD Validity Banner (replaces 15-min countdown) -->
+    <div class="rounded-xl p-3.5 bg-green-50 border border-green-200 text-left flex items-center gap-2.5">
+      <div class="text-green-600 shrink-0">
+        <span class="material-symbols-outlined text-xl">check_circle</span>
       </div>
-      <div class="font-mono font-black text-xl text-clementi-crimson bg-white px-3 py-1 rounded-lg border border-amber-200 shadow-xs" id="countdown-timer">
-        15:00
+      <div>
+        <div class="text-xs font-bold text-green-900 font-display">Valid until 23:59 today</div>
+        <div class="text-[11px] text-green-800 font-body">Scan at car park exit gantry anytime today.</div>
       </div>
     </div>
 
@@ -372,8 +367,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         id="reset-redemption-btn"
         class="flex items-center justify-center gap-1.5 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 transition-all shadow-xs"
       >
-        <span class="material-symbols-outlined text-base">refresh</span>
-        <span>Claim Another</span>
+        <span class="material-symbols-outlined text-base">home</span>
+        <span>Back to Home</span>
       </button>
     </div>
   </div>
@@ -420,7 +415,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const barcodeSvg = document.getElementById('barcode-svg') as SVGSVGElement;
   const barcodeCodeText = document.getElementById('barcode-code-text') as HTMLElement;
   const resultPlateDisplay = document.getElementById('result-plate-display') as HTMLElement;
-  const countdownTimer = document.getElementById('countdown-timer') as HTMLElement;
   const resetBtn = document.getElementById('reset-redemption-btn') as HTMLButtonElement;
   const passUnclaimBtn = document.getElementById('pass-unclaim-btn') as HTMLButtonElement;
   const barcodeBoxTrigger = document.getElementById('barcode-box-trigger') as HTMLElement;
@@ -456,7 +450,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   let loadedShops: ShopItem[] = [];
   let downsampledBlob: Blob | null = null;
   let currentPreviewUrl: string | null = null;
-  let countdownTimerId: number | null = null;
   let currentVoucherCode: string = '';
   let currentPlate: string = '';
   let currentRedemptionId: string = '';
@@ -473,41 +466,33 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     if (!shopSelect) return;
     shopSelect.innerHTML = '<option value="" disabled selected>-- Select Store from Receipt --</option>';
 
-    // Group shops by category
-    const categories: Array<ShopItem['category']> = ['Dine', 'Learn', 'Relax', 'Services'];
-    const categoryLabels: Record<string, string> = {
-      Dine: 'Dine (F&B)',
-      Learn: 'Learn (Enrichment)',
-      Relax: 'Relax (Wellness & Fitness)',
-      Services: 'Services & Retail',
-    };
+    // Flatten and sort: level order (B1, L1, L2, ...) then alphabetically by name
+    const levelOrder: Record<string, number> = { B3: 0, B2: 1, B1: 2, L1: 3, L2: 4, L3: 5, L4: 6, L5: 7, L6: 8, L7: 9 };
+    const sorted = [...shops].sort((a, b) => {
+      const la = levelOrder[a.level] ?? 99;
+      const lb = levelOrder[b.level] ?? 99;
+      if (la !== lb) return la - lb;
+      return a.name.localeCompare(b.name);
+    });
 
-    categories.forEach((cat) => {
-      const catShops = shops.filter((s) => s.category === cat);
-      if (catShops.length > 0) {
-        const optgroup = document.createElement('optgroup');
-        optgroup.label = categoryLabels[cat] || cat;
-        catShops.forEach((shop) => {
-          const opt = document.createElement('option');
-          opt.value = shop.id;
-          opt.textContent = `${shop.name} (${shop.unit} • ${shop.level})`;
-          optgroup.appendChild(opt);
-        });
-        shopSelect.appendChild(optgroup);
-      }
+    sorted.forEach((shop) => {
+      const opt = document.createElement('option');
+      opt.value = shop.id;
+      opt.textContent = `${shop.level} : ${shop.name}`;
+      shopSelect.appendChild(opt);
     });
 
     if (shopCountLabel) {
       shopCountLabel.textContent = `${shops.length} eligible stores`;
     }
 
-    // Also populate fallback unclaim shop select
+    // Also populate fallback unclaim shop select (flat, same order)
     if (fallbackShopSelect) {
       fallbackShopSelect.innerHTML = '<option value="">Select qualifying shop...</option>';
-      shops.forEach((shop) => {
+      sorted.forEach((shop) => {
         const opt = document.createElement('option');
         opt.value = shop.id;
-        opt.textContent = `${shop.name} (${shop.unit})`;
+        opt.textContent = `${shop.level} : ${shop.name}`;
         fallbackShopSelect.appendChild(opt);
       });
     }
@@ -520,7 +505,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   // Accepts arbitrary plain text. Removes MOD-19 checksum blocking.
   // ============================================================================
   plateInput?.addEventListener('input', () => {
-    const rawVal = plateInput.value.toUpperCase();
+    const rawVal = plateInput.value.replace(/\s+/g, '').toUpperCase();
     plateInput.value = rawVal;
     hideError();
 
@@ -732,29 +717,10 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       console.error('Barcode rendering error:', err);
     }
 
-    startCountdown(15 * 60);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function startCountdown(seconds: number) {
-    if (countdownTimerId) clearInterval(countdownTimerId);
-    let remaining = seconds;
-    const tick = () => {
-      const m = Math.floor(remaining / 60);
-      const s = remaining % 60;
-      countdownTimer.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-      if (remaining <= 0) {
-        if (countdownTimerId) clearInterval(countdownTimerId);
-        countdownTimer.textContent = 'EXPIRED';
-      }
-      remaining--;
-    };
-    tick();
-    countdownTimerId = window.setInterval(tick, 1000);
-  }
-
   resetBtn?.addEventListener('click', () => {
-    if (countdownTimerId) clearInterval(countdownTimerId);
     closeEnlargeModal();
     barcodeSection.classList.add('hidden');
     formSection.classList.remove('hidden');
