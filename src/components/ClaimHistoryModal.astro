@@ -5,13 +5,13 @@
 
 <div
   id="claim-history-modal"
-  class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+  class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
   role="dialog"
   aria-modal="true"
   aria-labelledby="history-drawer-title"
 >
   <div
-    class="bg-clementi-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl border border-clementi-border shadow-elevated max-h-[90vh] flex flex-col overflow-hidden"
+    class="bg-clementi-white w-full sm:max-w-lg rounded-2xl border border-clementi-border shadow-elevated max-h-[85vh] flex flex-col overflow-hidden"
     id="history-drawer-content"
   >
     <!-- Header -->
@@ -48,7 +48,7 @@
           <input
             type="text"
             id="history-plate-input"
-            placeholder="e.g. SBA 1234 A or JQR 1234"
+            placeholder="e.g. SBA1234A or JQR1234"
             class="flex-1 rounded-xl border-2 border-clementi-border bg-clementi-subtle px-3.5 py-2.5 text-sm font-display font-bold tracking-wider uppercase text-clementi-charcoal focus:border-clementi-crimson focus:outline-none"
             autocomplete="off"
             autocapitalize="characters"
@@ -151,3 +151,13 @@
     </div>
   </div>
 </div>
+
+<script>
+  // Auto-strip whitespace from history plate input on input event
+  const historyPlateInputEl = document.getElementById('history-plate-input') as HTMLInputElement | null;
+  historyPlateInputEl?.addEventListener('input', () => {
+    const pos = historyPlateInputEl.selectionStart ?? historyPlateInputEl.value.length;
+    historyPlateInputEl.value = historyPlateInputEl.value.replace(/\s+/g, '').toUpperCase();
+    historyPlateInputEl.setSelectionRange(pos, pos);
+  });
+</script>
