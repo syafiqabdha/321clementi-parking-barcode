@@ -32,8 +32,8 @@ export function normalizeCarPlate(rawInput: unknown): string {
   // 2. Strip non-printable / control / zero-width characters
   plate = plate.replace(/[\u200B-\u200D\uFEFF\u0000-\u001F\u007F-\u009F]/g, '');
 
-  // 3. Collapse multiple internal whitespace (spaces, tabs, newlines) into a single ASCII space
-  plate = plate.replace(/\s+/g, ' ');
+  // 3. Strip ALL whitespace (spaces, tabs, newlines) — PAN-84: space-invariant canonical key
+  plate = plate.replace(/\s+/g, '');
 
   // 4. Uppercase Latin / ASCII characters
   plate = plate.toUpperCase();
@@ -46,11 +46,11 @@ export function normalizeCarPlate(rawInput: unknown): string {
     throw new PlateValidationError('PLATE_TOO_LONG', 'Vehicle plate number cannot exceed 16 characters');
   }
 
-  // 6. Whitelist character validation: uppercase letters, digits, and single spaces
-  if (!/^[A-Z0-9]+( [A-Z0-9]+)*$/.test(plate)) {
+  // 6. Whitelist character validation: uppercase letters and digits only (no spaces after strip)
+  if (!/^[A-Z0-9]+$/.test(plate)) {
     throw new PlateValidationError(
       'PLATE_INVALID_CHARS',
-      'Vehicle plate number may only contain alphanumeric characters and spaces'
+      'Vehicle plate number may only contain alphanumeric characters'
     );
   }
 
