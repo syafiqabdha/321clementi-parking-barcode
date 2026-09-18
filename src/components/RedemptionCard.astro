@@ -970,17 +970,26 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
       let actionsHtml = '';
       if (record.status === 'CLAIMED') {
+        const isMasked = !record.voucher_code || record.voucher_code === 'CLM-••••••••';
+        const canResume = record.can_resume === true;
         actionsHtml = `
           <div class="flex gap-2 pt-1">
-            <button
-              type="button"
-              class="history-view-barcode-btn flex-1 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1"
-              data-code="${record.voucher_code}"
-              data-plate="${plate}"
-            >
-              <span class="material-symbols-outlined text-sm">fullscreen</span>
-              <span>View Barcode</span>
-            </button>
+            ${
+              !isMasked && canResume
+                ? `<button
+                    type="button"
+                    class="history-view-barcode-btn flex-1 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1"
+                    data-code="${record.voucher_code}"
+                    data-plate="${plate}"
+                  >
+                    <span class="material-symbols-outlined text-sm">fullscreen</span>
+                    <span>View Barcode</span>
+                  </button>`
+                : `<div class="flex-1 py-2 rounded-lg bg-slate-100 border border-slate-200 text-slate-400 font-display font-bold text-xs flex items-center justify-center gap-1 cursor-not-allowed">
+                    <span class="material-symbols-outlined text-sm">lock</span>
+                    <span>Barcode Hidden</span>
+                  </div>`
+            }
             ${
               record.can_unclaim
                 ? `<button
@@ -1013,7 +1022,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
               ${record.voucher_code}
             </div>
             <div class="text-xs text-clementi-slate mt-0.5">
-              ${record.shop_name} • $${record.receipt_amount.toFixed(2)}
+              ${record.shop_name != null ? record.shop_name : '••••••'} • ${record.receipt_amount != null ? `$${record.receipt_amount.toFixed(2)}` : '••••'}
             </div>
           </div>
           <span class="text-[10px] font-display font-bold px-2 py-0.5 rounded-full border ${badge.bg}">

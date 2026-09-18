@@ -10,6 +10,7 @@ import { getDb } from '../../../../db/connection';
 import { GET_PLATE_HISTORY_QUERY, INSERT_AUDIT_LOG } from '../../../../db/queries';
 import { normalizeCarPlate, PlateValidationError } from '../../../../utils/plate-normalization';
 import { checkHistoryRateLimit, checkPlateHistoryScanLimit, getClientIp } from '../../../../utils/rate-limiter';
+import { sha256 } from '../../../../utils/crypto';
 
 export const GET: APIRoute = async ({ request }) => {
   try {
@@ -79,19 +80,46 @@ export const GET: APIRoute = async ({ request }) => {
       // Audit logging is best-effort; don't fail the request
     }
 
-    // Format response
-    const data = rows.map((row: any) => ({
-      id: row.id,
-      voucher_code: row.voucher_code,
-      barcode_format: row.barcode_format || 'CODE128',
-      receipt_amount: parseFloat(row.receipt_amount),
-      receipt_date: row.receipt_date instanceof Date ? row.receipt_date.toISOString().slice(0, 10) : String(row.receipt_date).slice(0, 10),
-      shop_name: row.shop_name || 'Unknown',
-      status: row.status,
-      can_unclaim: row.can_unclaim,
-      can_resume: row.can_resume,
-      expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
-      created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    // Per-row claim token verification (SEC-02/SEC-03):
+    // Hash the incoming token once; compare against each row's stored hash.
+    const tokenHash = claimToken ? await sha256(claimToken) : null;
+
+    // Format response — mask sensitive fields when token is absent or invalid
+    const data = await Promise.all(rows.map(async (row: any) => {
+      const rowTokenHash: string | null = row.claim_token_hash || null;
+      // Token is valid for this row only when it exists and the hashes match
+      const tokenValid = tokenHash !== null && rowTokenHash !== null && tokenHash === rowTokenHash;
+
+      if (tokenValid) {
+        return {
+          id: row.id,
+          voucher_code: row.voucher_code,
+          barcode_format: row.barcode_format || 'CODE128',
+          receipt_amount: parseFloat(row.receipt_amount),
+          receipt_date: row.receipt_date instanceof Date ? row.receipt_date.toISOString().slice(0, 10) : String(row.receipt_date).slice(0, 10),
+          shop_name: row.shop_name || 'Unknown',
+          status: row.status,
+          can_unclaim: row.can_unclaim,
+          can_resume: row.can_resume,
+          expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
+          created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        };
+      }
+
+      // Unauthenticated — mask voucher_code, receipt_amount, shop_name, can_resume
+      return {
+        id: row.id,
+        voucher_code: 'CLM-••••••••',
+        barcode_format: row.barcode_format || 'CODE128',
+        receipt_amount: null,
+        receipt_date: row.receipt_date instanceof Date ? row.receipt_date.toISOString().slice(0, 10) : String(row.receipt_date).slice(0, 10),
+        shop_name: null,
+        status: row.status,
+        can_unclaim: row.can_unclaim,
+        can_resume: false,
+        expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
+        created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      };
     }));
 
     return new Response(
