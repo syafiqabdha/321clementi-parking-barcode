@@ -58,7 +58,8 @@ describe('SEC-01: Shop ID resolution in redemptions.ts ($6 = resolvedShopId)', (
 // Simulates the per-row token validation introduced in history.ts
 // ---------------------------------------------------------------------------
 describe('SEC-02/03: History endpoint claim token validation & masking', () => {
-  const MASKED_VOUCHER = 'CLM-••••••••';
+  // PAN-95: mask is now 10 bullet points (matching 10-digit numeric format)
+  const MASKED_VOUCHER = '••••••••••';
 
   // Helper: simulates what history.ts now does per row
   async function buildHistoryRow(
@@ -92,7 +93,7 @@ describe('SEC-02/03: History endpoint claim token validation & masking', () => {
     const storedHash = await sha256(token);
 
     const row = await buildHistoryRow(
-      { voucher_code: 'CLM-12345678', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
+      { voucher_code: '1234567890', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
       null // no token provided
     );
 
@@ -110,7 +111,7 @@ describe('SEC-02/03: History endpoint claim token validation & masking', () => {
     const wrongHash = await sha256(wrongToken);
 
     const row = await buildHistoryRow(
-      { voucher_code: 'CLM-12345678', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
+      { voucher_code: '1234567890', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
       wrongHash // wrong token hash
     );
 
@@ -127,12 +128,12 @@ describe('SEC-02/03: History endpoint claim token validation & masking', () => {
     const incomingHash = await sha256(token); // same token re-hashed
 
     const row = await buildHistoryRow(
-      { voucher_code: 'CLM-12345678', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
+      { voucher_code: '1234567890', receipt_amount: 35.50, shop_name: 'Saizeriya', claim_token_hash: storedHash, can_resume: true },
       incomingHash
     );
 
     expect(row.masked).toBe(false);
-    expect(row.voucher_code).toBe('CLM-12345678');
+    expect(row.voucher_code).toBe('1234567890');
     expect(row.receipt_amount).toBe(35.50);
     expect(row.shop_name).toBe('Saizeriya');
     expect(row.can_resume).toBe(true);
@@ -143,7 +144,7 @@ describe('SEC-02/03: History endpoint claim token validation & masking', () => {
     const tokenHash = await sha256(token);
 
     const row = await buildHistoryRow(
-      { voucher_code: 'CLM-OLDROW00', receipt_amount: 30.00, shop_name: 'KumarMess', claim_token_hash: null, can_resume: true },
+      { voucher_code: '0000000001', receipt_amount: 30.00, shop_name: 'KumarMess', claim_token_hash: null, can_resume: true },
       tokenHash // even a valid token cannot unlock a null-hash row
     );
 
@@ -163,24 +164,24 @@ describe('SEC-02/03: History endpoint claim token validation & masking', () => {
 
     // Row belonging to this claim
     const ownRow = await buildHistoryRow(
-      { voucher_code: 'CLM-OWN00001', receipt_amount: 40.00, shop_name: 'GoFit', claim_token_hash: ownHash, can_resume: true },
+      { voucher_code: '0000000001', receipt_amount: 40.00, shop_name: 'GoFit', claim_token_hash: ownHash, can_resume: true },
       incomingHash
     );
     // Row belonging to a different claim (different claim_token_hash in DB)
     const otherRow = await buildHistoryRow(
-      { voucher_code: 'CLM-OTHER002', receipt_amount: 55.00, shop_name: 'Huang Tu Di', claim_token_hash: otherHash, can_resume: true },
+      { voucher_code: '0000000002', receipt_amount: 55.00, shop_name: 'Huang Tu Di', claim_token_hash: otherHash, can_resume: true },
       incomingHash
     );
 
     expect(ownRow.masked).toBe(false);
-    expect(ownRow.voucher_code).toBe('CLM-OWN00001');
+    expect(ownRow.voucher_code).toBe('0000000001');
 
     expect(otherRow.masked).toBe(true);
     expect(otherRow.voucher_code).toBe(MASKED_VOUCHER);
   });
 
-  test('Masked voucher code matches the sentinel pattern CLM-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022', () => {
-    expect(MASKED_VOUCHER).toBe('CLM-\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022');
+  test('Masked voucher code matches the sentinel pattern ••••••••••', () => {
+    expect(MASKED_VOUCHER).toBe('••••••••••');
   });
 });
 
@@ -263,7 +264,8 @@ describe('SEC-03 UI: History card action gating', () => {
     can_unclaim: boolean;
   }
 
-  const MASKED_VOUCHER = 'CLM-••••••••';
+  // PAN-95: mask sentinel is now 10 bullet points (10-digit numeric format)
+  const MASKED_VOUCHER = '••••••••••';
 
   function shouldShowViewBarcode(record: HistoryRecord): boolean {
     const isMasked = !record.voucher_code || record.voucher_code === MASKED_VOUCHER;
@@ -272,7 +274,7 @@ describe('SEC-03 UI: History card action gating', () => {
   }
 
   test('Authenticated CLAIMED record shows View Barcode', () => {
-    expect(shouldShowViewBarcode({ voucher_code: 'CLM-12345678', can_resume: true, can_unclaim: true })).toBe(true);
+    expect(shouldShowViewBarcode({ voucher_code: '1234567890', can_resume: true, can_unclaim: true })).toBe(true);
   });
 
   test('Masked voucher_code hides View Barcode', () => {
@@ -280,7 +282,7 @@ describe('SEC-03 UI: History card action gating', () => {
   });
 
   test('can_resume: false hides View Barcode', () => {
-    expect(shouldShowViewBarcode({ voucher_code: 'CLM-12345678', can_resume: false, can_unclaim: false })).toBe(false);
+    expect(shouldShowViewBarcode({ voucher_code: '1234567890', can_resume: false, can_unclaim: false })).toBe(false);
   });
 
   test('Both masked and can_resume:false also hides View Barcode', () => {
