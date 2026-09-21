@@ -109,7 +109,7 @@ export const GET: APIRoute = async ({ request }) => {
       // Unauthenticated — mask voucher_code, receipt_amount, shop_name, can_resume
       return {
         id: row.id,
-        voucher_code: 'CLM-••••••••',
+        voucher_code: '••••••••••',
         barcode_format: row.barcode_format || 'CODE128',
         receipt_amount: null,
         receipt_date: row.receipt_date instanceof Date ? row.receipt_date.toISOString().slice(0, 10) : String(row.receipt_date).slice(0, 10),

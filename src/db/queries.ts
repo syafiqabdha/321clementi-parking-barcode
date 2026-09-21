@@ -5,6 +5,17 @@
  */
 
 // ============================================================================
+// Voucher Code Format (PAN-95)
+// ============================================================================
+
+/**
+ * Regex enforcing the canonical voucher code format: exactly 10 decimal digits.
+ * Used in API validation (redemptions.ts) and unit tests.
+ * Must match the DB CHECK constraint added by migration 0004.
+ */
+export const VOUCHER_CODE_REGEX = /^\d{10}$/;
+
+// ============================================================================
 // Voucher Pool Queries
 // ============================================================================
 

@@ -22,6 +22,7 @@ import {
   CHECK_RECEIPT_FINGERPRINT_QUERY,
   COUNT_AVAILABLE_VOUCHERS_QUERY,
   INSERT_AUDIT_LOG,
+  VOUCHER_CODE_REGEX,
 } from '../../../db/queries';
 import { normalizeCarPlate, PlateValidationError } from '../../../utils/plate-normalization';
 import { generateClaimToken } from '../../../utils/crypto';
@@ -341,6 +342,16 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const row = result[0] as any;
+
+    // PAN-95: Defense-in-depth — verify the allocated voucher code is strictly numeric 10-digit.
+    // The DB CHECK constraint (migration 0004) is the primary gate; this ensures the API
+    // never serves a non-compliant code even if the constraint could not be applied yet.
+    if (!VOUCHER_CODE_REGEX.test(String(row.voucher_code ?? ''))) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'VOUCHER_FORMAT_INVALID', message: 'Allocated voucher code does not meet the required format. Please contact support.' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Log audit
     try {
