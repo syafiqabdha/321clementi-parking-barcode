@@ -9,7 +9,7 @@
  *   UI   (src/components/RedemptionCard.astro)      → the sentinel it recognises as masked
  */
 import { describe, test, expect } from 'bun:test';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
@@ -44,7 +44,7 @@ describe('PAN-95 contract — history masking sentinel', () => {
     expect(sentinel).toBe('•'.repeat(10));
   });
 
-  test('[PAN-95 FINDING-3] UI recognises the sentinel the API actually returns', () => {
+  test('[PAN-95 HIGH-3 regression] UI recognises the sentinel the API actually returns', () => {
     const apiSentinel = apiMaskSentinel(historySource);
     const uiSentinel = uiMaskSentinel(cardSource);
 
@@ -60,5 +60,37 @@ describe('PAN-95 contract — history masking sentinel', () => {
     ].filter(Boolean);
 
     expect(drift.length ? drift.join('; ') : null).toBeNull();
+  });
+});
+
+describe('PAN-95 contract — shipped UI defaults carry no legacy format', () => {
+  test('pre-render placeholders in both barcode components are 10-digit numeric', async () => {
+    const barcodeModal = await readFile(join(ROOT, 'src', 'components', 'BarcodeModal.astro'), 'utf-8');
+
+    for (const [name, src] of [['RedemptionCard.astro', cardSource], ['BarcodeModal.astro', barcodeModal]] as const) {
+      const placeholders = [...src.matchAll(/id="(?:barcode-code-text|enlarge-barcode-text)"[^>]*>\s*([^<\s]+)\s*</g)];
+      expect(`${name}:${placeholders.length}`).toBe(`${name}:1`);
+      const value = placeholders[0][1];
+      expect(`${name}:${value}:${/^\d{10}$/.test(value)}`).toBe(`${name}:${value}:true`);
+    }
+  });
+
+  test('no legacy CLM- literal survives anywhere under src/', async () => {
+    const offenders: string[] = [];
+    const walk = async (dir: string) => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (['node_modules', 'dist', '.git', '.astro'].includes(entry.name)) continue;
+          await walk(full);
+          continue;
+        }
+        if (!/\.(ts|astro|js|mts|cts|json)$/.test(entry.name)) continue;
+        const text = await readFile(full, 'utf-8');
+        if (text.includes('CLM-')) offenders.push(full.replace(`${ROOT}/`, ''));
+      }
+    };
+    await walk(join(ROOT, 'src'));
+    expect(offenders).toEqual([]);
   });
 });

@@ -62,16 +62,22 @@ async function applyMigrationCapturingError(name: string): Promise<string | null
   }
 }
 
+/**
+ * Constraint lookups are scoped by conrelid exactly like the migration's DO blocks
+ * (LOW 6), so a same-named constraint on another table cannot corrupt the assertion.
+ */
 async function constraintCount(): Promise<number> {
   const rows = await sql`
-    SELECT count(*)::int AS c FROM pg_constraint WHERE conname = ${CONSTRAINT}
+    SELECT count(*)::int AS c FROM pg_constraint
+    WHERE conname = ${CONSTRAINT} AND conrelid = 'voucher_pool'::regclass
   `;
   return (rows[0] as any).c;
 }
 
 async function constraintValidated(): Promise<boolean | null> {
   const rows = await sql`
-    SELECT convalidated FROM pg_constraint WHERE conname = ${CONSTRAINT}
+    SELECT convalidated FROM pg_constraint
+    WHERE conname = ${CONSTRAINT} AND conrelid = 'voucher_pool'::regclass
   `;
   return rows.length ? (rows[0] as any).convalidated : null;
 }
@@ -148,11 +154,12 @@ afterAll(async () => {
 });
 
 describe('PAN-95 migration 0004 — clean-database application', () => {
-  test('0004 up applies cleanly and installs a VALIDATED CHECK constraint', async () => {
+  test('0004 up applies cleanly and installs a table-scoped CHECK constraint (NOT VALID by design)', async () => {
     await resetToBase();
     expect(await applyMigrationCapturingError(M0004)).toBeNull();
     expect(await constraintCount()).toBe(1);
-    expect(await constraintValidated()).toBe(true);
+    // NOT VALID: guards new writes without scanning historic rows. Ops validates later.
+    expect(await constraintValidated()).toBe(false);
   });
 
   test('constraint accepts exactly 10 decimal digits (incl. leading zeros)', async () => {
@@ -225,9 +232,10 @@ describe('PAN-95 migration 0004 — clean-database application', () => {
 });
 
 describe('PAN-95 migration 0004 — production-shaped data (legacy non-compliant codes)', () => {
-  test('[PAN-95 FINDING-1] 0004 up must apply when voucher_pool still holds non-compliant AVAILABLE rows', async () => {
-    // This is the exact starting state migration 0004 documents itself as written for:
+  test('[PAN-95 BLOCKER-1 regression] 0004 up applies when voucher_pool holds non-compliant AVAILABLE rows', async () => {
+    // The exact starting state migration 0004 documents itself as written for:
     // "Step 1: EXPIRE non-compliant AVAILABLE vouchers so ops starts with a clean numeric batch".
+    // Was RED (migration aborted) before NOT VALID; this test is the permanent guard.
     await resetToBase();
     await seedVoucher('CLM-11111111', 'AVAILABLE');
     await seedVoucher('0000000021', 'AVAILABLE');
@@ -243,11 +251,16 @@ describe('PAN-95 migration 0004 — production-shaped data (legacy non-compliant
     `;
     expect(available.map((r: any) => r.voucher_code)).toEqual(['0000000021']);
     expect(await constraintCount()).toBe(1);
+    // Purge is a status flip, not a delete — the row is retained for audit.
+    const expired = await sql`
+      SELECT count(*)::int c FROM voucher_pool WHERE voucher_code = 'CLM-11111111' AND status = 'EXPIRED'
+    `;
+    expect((expired[0] as any).c).toBe(1);
   });
 
-  test('[PAN-95 FINDING-2] 0004 up must apply when legacy non-compliant vouchers exist in history', async () => {
-    // Redeemed history is explicitly declared "untouched" by the migration, but the
-    // table-level ADD CONSTRAINT validates every existing row, including those.
+  test('[PAN-95 BLOCKER-2 regression] 0004 up applies when legacy non-compliant vouchers exist in history', async () => {
+    // Redeemed history is declared "untouched" by the migration; before NOT VALID the
+    // table-level ADD CONSTRAINT validated those rows and aborted the whole file.
     await resetToBase();
     await seedVoucher('CLM-22222222', 'REDEEMED');
     await seedLegacyRedemptionLog('CLM-22222222');
@@ -258,39 +271,34 @@ describe('PAN-95 migration 0004 — production-shaped data (legacy non-compliant
       err === null ? null : `migration 0004 aborted — ${err}`
     ).toBeNull();
 
-    // History must survive the migration.
+    // History must survive the migration, FK intact.
     const history = await sql`
       SELECT voucher_code, status FROM voucher_pool WHERE voucher_code = 'CLM-22222222'
     `;
     expect(history.length).toBe(1);
     expect((history[0] as any).status).toBe('REDEEMED');
+    expect(((await sql`SELECT count(*)::int c FROM redemption_logs`)[0] as any).c).toBe(1);
     expect(await constraintCount()).toBe(1);
   });
 
-  test('proposed fix: ADD CONSTRAINT ... NOT VALID survives legacy rows and still blocks new bad inserts', async () => {
+  test('the applied NOT VALID constraint preserves legacy rows and still blocks new bad writes', async () => {
     await resetToBase();
     await seedVoucher('CLM-11111111', 'AVAILABLE');
     await seedVoucher('CLM-22222222', 'REDEEMED');
     await seedLegacyRedemptionLog('CLM-22222222');
     await seedVoucher('0000000023', 'AVAILABLE');
 
-    // Build the fix from the migration's own CHECK expression so it cannot drift.
-    const upSql = await readMigration(M0004);
-    const checkExpr = upSql.match(/ADD CONSTRAINT[\s\S]*?CHECK \([^)]*\)/);
-    expect(checkExpr).not.toBeNull();
-
-    await sql.unsafe(`ALTER TABLE voucher_pool ${checkExpr![0]} NOT VALID`);
-
+    expect(await applyMigrationCapturingError(M0004)).toBeNull();
     expect(await constraintCount()).toBe(1);
     expect(await constraintValidated()).toBe(false);
 
-    // History and non-compliant rows are preserved…
+    // History and (already expired) non-compliant rows are preserved…
     const preserved = await sql`
       SELECT voucher_code, status FROM voucher_pool ORDER BY voucher_code
     `;
     expect(preserved.map((r: any) => `${r.voucher_code}:${r.status}`)).toEqual([
       '0000000023:AVAILABLE',
-      'CLM-11111111:AVAILABLE',
+      'CLM-11111111:EXPIRED',
       'CLM-22222222:REDEEMED',
     ]);
 
@@ -301,14 +309,69 @@ describe('PAN-95 migration 0004 — production-shaped data (legacy non-compliant
 
     // Documented residual: a NOT VALID constraint is still enforced on UPDATE of the
     // touched row, so legacy non-compliant rows become immutable (they cannot even be
-    // re-statused). Ops must DELETE them instead — and referenced rows are protected by
+    // re-statused). Ops must DELETE them instead — referenced rows are held by
     // fk_redemption_logs_voucher_code ON DELETE RESTRICT.
     let updateErr: string | null = null;
     try {
-      await sql`UPDATE voucher_pool SET status = 'EXPIRED' WHERE voucher_code = 'CLM-11111111'`;
+      await sql`UPDATE voucher_pool SET status = 'AVAILABLE' WHERE voucher_code = 'CLM-11111111'`;
     } catch (err: any) {
       updateErr = err?.message ?? String(err);
     }
     expect(updateErr).toContain(CONSTRAINT);
+  });
+
+  test('deferred validation: VALIDATE CONSTRAINT succeeds on a clean pool', async () => {
+    await resetToBase();
+    await seedVoucher('0000000031', 'AVAILABLE');
+    await applyMigration(M0004);
+
+    await sql`ALTER TABLE voucher_pool VALIDATE CONSTRAINT ck_voucher_pool_voucher_code_numeric_10`;
+    expect(await constraintValidated()).toBe(true);
+  });
+
+  test('deferred validation: VALIDATE CONSTRAINT fails while legacy non-compliant rows remain', async () => {
+    // Documents the ops caveat in the migration header: validation must wait until legacy
+    // rows are archived, otherwise the (correct) NOT VALID choice can never be upgraded.
+    await resetToBase();
+    await seedVoucher('CLM-22222222', 'REDEEMED');
+    await seedLegacyRedemptionLog('CLM-22222222');
+    await applyMigration(M0004);
+
+    let err: string | null = null;
+    try {
+      await sql`ALTER TABLE voucher_pool VALIDATE CONSTRAINT ck_voucher_pool_voucher_code_numeric_10`;
+    } catch (e: any) {
+      err = e?.message ?? String(e);
+    }
+    expect(err).toContain(CONSTRAINT);
+    expect(await constraintValidated()).toBe(false);
+  });
+
+  test('[PAN-95 LOW-6 regression] same-named constraint on another table cannot mask or mis-drop', async () => {
+    await resetToBase();
+
+    // Decoy: identical constraint name on a different table (the LOW 6 failure mode).
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS decoy_holder (voucher_code VARCHAR(64));
+      ALTER TABLE decoy_holder ADD CONSTRAINT ck_voucher_pool_voucher_code_numeric_10 CHECK (true);
+    `);
+
+    // Up must still install the real constraint on voucher_pool (unscoped check would
+    // false-positive on the decoy and silently skip it, leaving the pool unprotected).
+    expect(await applyMigrationCapturingError(M0004)).toBeNull();
+    expect(await constraintCount()).toBe(1);
+    expect(await insertVoucher('CLM-44444444')).toContain(CONSTRAINT);
+
+    // Down must drop voucher_pool's constraint and leave the decoy intact
+    // (unscoped DROP targeted by name alone is what killed the old down migration).
+    expect(await applyMigrationCapturingError(M0004_DOWN)).toBeNull();
+    expect(await constraintCount()).toBe(0);
+    const decoy = await sql`
+      SELECT count(*)::int c FROM pg_constraint
+      WHERE conname = ${CONSTRAINT} AND conrelid = 'decoy_holder'::regclass
+    `;
+    expect((decoy[0] as any).c).toBe(1);
+
+    await sql.unsafe(`DROP TABLE IF EXISTS decoy_holder CASCADE`);
   });
 });
