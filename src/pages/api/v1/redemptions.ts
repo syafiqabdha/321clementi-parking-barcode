@@ -343,14 +343,12 @@ export const POST: APIRoute = async ({ request }) => {
 
     const row = result[0] as any;
 
-    // PAN-95: Defense-in-depth — verify the allocated voucher code is strictly numeric 10-digit.
-    // The DB CHECK constraint (migration 0004) is the primary gate; this ensures the API
-    // never serves a non-compliant code even if the constraint could not be applied yet.
+    // PAN-95: Invariant guard — the CTE selector now filters to compliant codes, so this
+    // branch should only fire if the constraint was not applied AND legacy data slipped
+    // through. Return 500 (server bug) rather than 503 (user retry), and do NOT consume
+    // the daily slot — throw so the outer catch rolls any partial state back cleanly.
     if (!VOUCHER_CODE_REGEX.test(String(row.voucher_code ?? ''))) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'VOUCHER_FORMAT_INVALID', message: 'Allocated voucher code does not meet the required format. Please contact support.' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } }
-      );
+      throw new Error(`INVARIANT_VIOLATED: allocated non-compliant voucher code '${row.voucher_code}'. Run migration 0004 immediately.`);
     }
 
     // Log audit

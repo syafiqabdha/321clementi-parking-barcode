@@ -40,6 +40,7 @@ WITH available_voucher AS (
     SELECT id, voucher_code, barcode_format
     FROM voucher_pool
     WHERE status = 'AVAILABLE'
+      AND voucher_code ~ '^\\d{10}$'
     ORDER BY id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
