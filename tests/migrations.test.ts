@@ -416,3 +416,181 @@ describe('PostgreSQL 16 Schema Migrations (PAN-59)', () => {
     expect(tableNames).toContain('redemption_logs');
   });
 });
+
+// ============================================================================
+// Migration 0004: 10-digit Numeric Voucher Code Enforcement (PAN-95)
+// Each test in this suite is sequential and builds on prior state.
+// ============================================================================
+describe('Migration 0004: 10-digit numeric voucher code enforcement (PAN-95)', () => {
+  // Apply full migration chain (0001→0003) before 0004 tests.
+  // These run after the 0001 suite above which leaves the schema clean (idempotent re-apply).
+  test('0001→0003 applied as baseline for 0004 tests', async () => {
+    // 0001 is already applied by the prior suite's idempotent re-run test.
+    // Apply 0002 and 0003 to get the full real schema.
+    const m0002 = await readFile(join(MIGRATIONS_DIR, '0002_create_shops_and_unclaim_support.up.sql'), 'utf-8');
+    const m0003 = await readFile(join(MIGRATIONS_DIR, '0003_add_receipt_deduplication_and_verification.up.sql'), 'utf-8');
+    await sql.unsafe(m0002);
+    await sql.unsafe(m0003);
+
+    const tables = await sql`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+    `;
+    const tableNames = tables.map((t: any) => t.tablename);
+    expect(tableNames).toContain('voucher_pool');
+    expect(tableNames).toContain('shops');
+    expect(tableNames).toContain('redemption_logs');
+    expect(tableNames).toContain('redemption_audit_logs');
+  });
+
+  test('Seed: compliant + non-compliant AVAILABLE + legacy REDEEMED rows', async () => {
+    // Compliant AVAILABLE (10-digit numeric) — must survive the migration and remain available
+    await sql`
+      INSERT INTO voucher_pool (voucher_code, status, batch_id)
+      VALUES
+        ('0000000001', 'AVAILABLE', 'BATCH-NUMERIC'),
+        ('9999999999', 'AVAILABLE', 'BATCH-NUMERIC'),
+        ('1234567890', 'AVAILABLE', 'BATCH-NUMERIC');
+    `;
+
+    // Non-compliant AVAILABLE (old alpha-prefix format) — must be EXPIRED by migration
+    await sql`
+      INSERT INTO voucher_pool (voucher_code, status, batch_id)
+      VALUES
+        ('CLM-0000001', 'AVAILABLE', 'BATCH-LEGACY'),
+        ('CLM-0000002', 'AVAILABLE', 'BATCH-LEGACY'),
+        ('TOOSHORT', 'AVAILABLE', 'BATCH-LEGACY');
+    `;
+
+    // Legacy REDEEMED rows with non-compliant codes — must be UNTOUCHED by migration
+    await sql`
+      INSERT INTO voucher_pool (voucher_code, status, batch_id)
+      VALUES
+        ('CLM-HIST-001', 'REDEEMED', 'BATCH-LEGACY'),
+        ('CLM-HIST-002', 'REDEEMED', 'BATCH-LEGACY');
+    `;
+
+    const counts = await sql`
+      SELECT status, count(*)::int as cnt
+      FROM voucher_pool
+      GROUP BY status
+      ORDER BY status;
+    `;
+    const byStatus = Object.fromEntries(counts.map((r: any) => [r.status, r.cnt]));
+    expect(byStatus['AVAILABLE']).toBe(6);
+    expect(byStatus['REDEEMED']).toBe(2);
+  });
+
+  test('0004 up: non-compliant AVAILABLE rows expired, compliant rows untouched', async () => {
+    const m0004up = await readFile(join(MIGRATIONS_DIR, '0004_enforce_10digit_numeric_voucher_codes.up.sql'), 'utf-8');
+    await sql.unsafe(m0004up);
+
+    // Non-compliant AVAILABLE must now be EXPIRED
+    const expired = await sql`
+      SELECT voucher_code FROM voucher_pool WHERE status = 'EXPIRED' ORDER BY voucher_code;
+    `;
+    const expiredCodes = expired.map((r: any) => r.voucher_code);
+    expect(expiredCodes).toContain('CLM-0000001');
+    expect(expiredCodes).toContain('CLM-0000002');
+    expect(expiredCodes).toContain('TOOSHORT');
+
+    // Compliant AVAILABLE rows must still be AVAILABLE
+    const available = await sql`
+      SELECT voucher_code FROM voucher_pool WHERE status = 'AVAILABLE' ORDER BY voucher_code;
+    `;
+    const availableCodes = available.map((r: any) => r.voucher_code);
+    expect(availableCodes).toContain('0000000001');
+    expect(availableCodes).toContain('1234567890');
+    expect(availableCodes).toContain('9999999999');
+    expect(availableCodes).not.toContain('CLM-0000001');
+
+    // Legacy REDEEMED rows must be completely untouched
+    const redeemed = await sql`
+      SELECT voucher_code FROM voucher_pool WHERE status = 'REDEEMED' ORDER BY voucher_code;
+    `;
+    const redeemedCodes = redeemed.map((r: any) => r.voucher_code);
+    expect(redeemedCodes).toContain('CLM-HIST-001');
+    expect(redeemedCodes).toContain('CLM-HIST-002');
+  });
+
+  test('0004 up: CHECK constraint (NOT VALID) exists and is table-scoped', async () => {
+    const constraints = await sql`
+      SELECT conname, convalidated
+      FROM pg_constraint
+      WHERE conname   = 'ck_voucher_pool_voucher_code_numeric_10'
+        AND conrelid  = 'voucher_pool'::regclass;
+    `;
+    expect(constraints.length).toBe(1);
+    // NOT VALID means convalidated = false
+    expect((constraints[0] as any).convalidated).toBe(false);
+  });
+
+  test('0004 up: constraint blocks non-compliant INSERT on new rows', async () => {
+    let errorThrown = false;
+    try {
+      await sql`
+        INSERT INTO voucher_pool (voucher_code, status, batch_id)
+        VALUES ('BAD-CODE-XX', 'AVAILABLE', 'BATCH-BAD');
+      `;
+    } catch (err: any) {
+      errorThrown = true;
+      expect(err.message).toContain('ck_voucher_pool_voucher_code_numeric_10');
+    }
+    expect(errorThrown).toBe(true);
+  });
+
+  test('0004 up: constraint allows compliant INSERT', async () => {
+    await sql`
+      INSERT INTO voucher_pool (voucher_code, status, batch_id)
+      VALUES ('5555555555', 'AVAILABLE', 'BATCH-NUMERIC-NEW');
+    `;
+    const row = await sql`
+      SELECT voucher_code, status FROM voucher_pool WHERE voucher_code = '5555555555';
+    `;
+    expect(row.length).toBe(1);
+    expect((row[0] as any).status).toBe('AVAILABLE');
+  });
+
+  test('0004 up: idempotent re-apply does not error', async () => {
+    const m0004up = await readFile(join(MIGRATIONS_DIR, '0004_enforce_10digit_numeric_voucher_codes.up.sql'), 'utf-8');
+    // Should not throw — DO block guards with IF NOT EXISTS (scoped to conrelid)
+    await sql.unsafe(m0004up);
+
+    const constraints = await sql`
+      SELECT count(*)::int as cnt
+      FROM pg_constraint
+      WHERE conname   = 'ck_voucher_pool_voucher_code_numeric_10'
+        AND conrelid  = 'voucher_pool'::regclass;
+    `;
+    // Still exactly one constraint — no duplicate created
+    expect((constraints[0] as any).cnt).toBe(1);
+  });
+
+  test('0004 down: constraint dropped, legacy REDEEMED rows still intact', async () => {
+    const m0004down = await readFile(join(MIGRATIONS_DIR, '0004_enforce_10digit_numeric_voucher_codes.down.sql'), 'utf-8');
+    await sql.unsafe(m0004down);
+
+    const constraints = await sql`
+      SELECT count(*)::int as cnt
+      FROM pg_constraint
+      WHERE conname   = 'ck_voucher_pool_voucher_code_numeric_10'
+        AND conrelid  = 'voucher_pool'::regclass;
+    `;
+    expect((constraints[0] as any).cnt).toBe(0);
+
+    // Legacy REDEEMED rows still untouched
+    const redeemed = await sql`
+      SELECT voucher_code FROM voucher_pool WHERE status = 'REDEEMED' ORDER BY voucher_code;
+    `;
+    const redeemedCodes = redeemed.map((r: any) => r.voucher_code);
+    expect(redeemedCodes).toContain('CLM-HIST-001');
+    expect(redeemedCodes).toContain('CLM-HIST-002');
+
+    // Non-compliant INSERT now succeeds (constraint gone)
+    await sql`
+      INSERT INTO voucher_pool (voucher_code, status, batch_id)
+      VALUES ('ROLLBACK-TEST', 'AVAILABLE', 'BATCH-DOWN');
+    `;
+    const row = await sql`SELECT voucher_code FROM voucher_pool WHERE voucher_code = 'ROLLBACK-TEST';`;
+    expect(row.length).toBe(1);
+  });
+});

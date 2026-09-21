@@ -86,7 +86,7 @@ describe('Frontend Acceptance: Shop Directory Selection (PAN-75 Scope 2)', () =>
 describe('Frontend Acceptance: Claim History & Recovery State Machine (PAN-75 Scope 3)', () => {
   const mockClaimedRecord: ClaimHistoryRecord = {
     id: '01a0-redemption-1',
-    voucher_code: 'CLM-12345678',
+    voucher_code: '1234567890',
     barcode_format: 'CODE128',
     receipt_amount: 35.50,
     receipt_date: '2026-09-17',

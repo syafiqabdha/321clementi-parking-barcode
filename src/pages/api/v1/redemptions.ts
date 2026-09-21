@@ -22,6 +22,7 @@ import {
   CHECK_RECEIPT_FINGERPRINT_QUERY,
   COUNT_AVAILABLE_VOUCHERS_QUERY,
   INSERT_AUDIT_LOG,
+  VOUCHER_CODE_REGEX,
 } from '../../../db/queries';
 import { normalizeCarPlate, PlateValidationError } from '../../../utils/plate-normalization';
 import { generateClaimToken } from '../../../utils/crypto';
@@ -341,6 +342,14 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const row = result[0] as any;
+
+    // PAN-95: Invariant guard — the CTE selector now filters to compliant codes, so this
+    // branch should only fire if the constraint was not applied AND legacy data slipped
+    // through. Return 500 (server bug) rather than 503 (user retry), and do NOT consume
+    // the daily slot — throw so the outer catch rolls any partial state back cleanly.
+    if (!VOUCHER_CODE_REGEX.test(String(row.voucher_code ?? ''))) {
+      throw new Error(`INVARIANT_VIOLATED: allocated non-compliant voucher code '${row.voucher_code}'. Run migration 0004 immediately.`);
+    }
 
     // Log audit
     try {

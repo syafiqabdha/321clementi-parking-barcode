@@ -1,7 +1,8 @@
 /**
  * 321 Clementi Smart Parking Redemption Engine
  * Concurrency & Voucher Leakage Tests (PAN-64)
- * 
+ * Updated (PAN-95): all mock voucher codes now use strictly 10-digit numeric format.
+ *
  * Simulate concurrent redemption requests against the atomic Postgres CTE;
  * verify exactly N vouchers are popped with zero duplicate codes and zero gaps.
  * Uses in-memory simulation of the CTE allocation logic since we're running
@@ -9,6 +10,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
+import { VOUCHER_CODE_REGEX } from '../src/db/queries';
 
 // ============================================================================
 // Core Data Structures (mirrors PostgreSQL schema)
@@ -157,6 +159,14 @@ class AtomicVoucherAllocator {
 }
 
 // ============================================================================
+// Helper: generate a 10-digit zero-padded numeric voucher code
+// e.g. numericCode(1) → '0000000001'
+// ============================================================================
+function numericCode(n: number): string {
+  return n.toString().padStart(10, '0');
+}
+
+// ============================================================================
 // Test Suite
 // ============================================================================
 
@@ -166,11 +176,11 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
   describe('Sequential Allocation Correctness', () => {
     test('Allocates vouchers in strict FIFO order', () => {
       const allocator = new AtomicVoucherAllocator([
-        { code: 'VC-001', batchId: 'BATCH-A' },
-        { code: 'VC-002', batchId: 'BATCH-A' },
-        { code: 'VC-003', batchId: 'BATCH-A' },
-        { code: 'VC-004', batchId: 'BATCH-A' },
-        { code: 'VC-005', batchId: 'BATCH-A' },
+        { code: numericCode(1), batchId: 'BATCH-A' },
+        { code: numericCode(2), batchId: 'BATCH-A' },
+        { code: numericCode(3), batchId: 'BATCH-A' },
+        { code: numericCode(4), batchId: 'BATCH-A' },
+        { code: numericCode(5), batchId: 'BATCH-A' },
       ]);
 
       const results: string[] = [];
@@ -181,7 +191,9 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
         results.push(result.voucher_code!);
       }
 
-      expect(results).toEqual(['VC-001', 'VC-002', 'VC-003', 'VC-004', 'VC-005']);
+      expect(results).toEqual([
+        numericCode(1), numericCode(2), numericCode(3), numericCode(4), numericCode(5),
+      ]);
       
       const stats = allocator.getStats();
       expect(stats.available).toBe(0);
@@ -193,7 +205,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
 
     test('Exhaustion returns failure after pool empty', () => {
       const allocator = new AtomicVoucherAllocator([
-        { code: 'VC-X1', batchId: 'BATCH-X' },
+        { code: numericCode(101), batchId: 'BATCH-X' },
       ]);
 
       const r1 = allocator.allocate('HASH-A1', 30.00, '2026-09-16', 'Store');
@@ -211,7 +223,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       const NUM_CONCURRENT = 50;
       const vouchers: Array<{ code: string }> = [];
       for (let i = 1; i <= NUM_CONCURRENT; i++) {
-        vouchers.push({ code: `S-CONCURRENT-${i.toString().padStart(4, '0')}` });
+        vouchers.push({ code: numericCode(2000 + i) });
       }
 
       const allocator = new AtomicVoucherAllocator(vouchers);
@@ -240,7 +252,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       expect(uniqueCodes.size).toBe(NUM_CONCURRENT);
 
       // Verify no gaps in the sequence
-      const expectedCodes = Array.from({ length: NUM_CONCURRENT }, (_, i) => `S-CONCURRENT-${(i + 1).toString().padStart(4, '0')}`);
+      const expectedCodes = Array.from({ length: NUM_CONCURRENT }, (_, i) => numericCode(2001 + i));
       expect(new Set(allCodes)).toEqual(new Set(expectedCodes));
 
       // Verify stats
@@ -256,7 +268,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
     test('50 requests from different vehicles produces unique logs', () => {
       const NUM = 50;
       const allocator = new AtomicVoucherAllocator(
-        Array.from({ length: NUM }, (_, i) => ({ code: `LOG-TST-${(i + 1).toString().padStart(4, '0')}` }))
+        Array.from({ length: NUM }, (_, i) => ({ code: numericCode(3000 + i + 1) }))
       );
 
       for (let i = 0; i < NUM; i++) {
@@ -275,7 +287,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       const NUM = 100;
       const allocator = new AtomicVoucherAllocator(
         Array.from({ length: NUM }, (_, i) => ({
-          code: `MIXED-${(i + 1).toString().padStart(5, '0')}`
+          code: numericCode(4000 + i + 1)
         }))
       );
 
@@ -300,7 +312,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       for (let b = 0; b < NUM_BATCHES; b++) {
         for (let i = 1; i <= BATCH_SIZE; i++) {
           vouchers.push({
-            code: `B${b + 1}-V${i.toString().padStart(4, '0')}`,
+            code: numericCode(5000 + b * BATCH_SIZE + i),
             batchId: `BATCH-${b + 1}`,
           });
         }
@@ -324,9 +336,9 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
   describe('Collision Resistance', () => {
     test('Identical plates attempting simultaneous allocation gets one winner', () => {
       const allocator = new AtomicVoucherAllocator([
-        { code: 'COLLIDE-1' },
-        { code: 'COLLIDE-2' },
-        { code: 'COLLIDE-3' },
+        { code: numericCode(7000001) },
+        { code: numericCode(7000002) },
+        { code: numericCode(7000003) },
       ]);
 
       // Same plate tries three times — only first two should succeed (only 3 vouchers, last fails due to exhaustion)
@@ -344,13 +356,13 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       const codes = [r1.voucher_code!, r2.voucher_code!, r3.voucher_code!];
       const uniqueSet = new Set(codes);
       expect(uniqueSet.size).toBe(3);
-      expect(uniqueSet).toEqual(new Set(['COLLIDE-1', 'COLLIDE-2', 'COLLIDE-3']));
+      expect(uniqueSet).toEqual(new Set([numericCode(7000001), numericCode(7000002), numericCode(7000003)]));
     });
 
     test('Race condition: rapid sequential allocations maintain integrity', () => {
       const NUM = 200;
       const allocator = new AtomicVoucherAllocator(
-        Array.from({ length: NUM }, (_, i) => ({ code: `RACE-${(i + 1).toString().padStart(5, '0')}` }))
+        Array.from({ length: NUM }, (_, i) => ({ code: numericCode(8000000 + i + 1) }))
       );
 
       for (let i = 0; i < NUM; i++) {
@@ -376,11 +388,11 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
     });
 
     test('Single voucher pool handles one allocation then blocks', () => {
-      const allocator = new AtomicVoucherAllocator([{ code: 'ONLY-ONE' }]);
-      
+      const allocator = new AtomicVoucherAllocator([{ code: numericCode(9000001) }]);
+
       const first = allocator.allocate('FIRST-TRY', 30.00, '2026-09-16', 'OneShop');
       expect(first.success).toBe(true);
-      expect(first.voucher_code).toBe('ONLY-ONE');
+      expect(first.voucher_code).toBe(numericCode(9000001));
 
       const second = allocator.allocate('SECOND-TRY', 30.00, '2026-09-16', 'OneShop');
       expect(second.success).toBe(false);
@@ -393,7 +405,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
 
       const TOTAL = VALID_PLATES.length + INVALID_PLATES.length;
       const allocator = new AtomicVoucherAllocator(
-        Array.from({ length: TOTAL }, (_, i) => ({ code: `MIXED-FMT-${(i + 1).toString().padStart(3, '0')}` }))
+        Array.from({ length: TOTAL }, (_, i) => ({ code: numericCode(9100000 + i + 1) }))
       );
 
       const allPlates = [...VALID_PLATES, ...INVALID_PLATES];
@@ -413,7 +425,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       const NUM = 1000;
       const allocator = new AtomicVoucherAllocator(
         Array.from({ length: NUM }, (_, i) => ({
-          code: `LARGE-${(i + 1).toString().padStart(6, '0')}`
+          code: numericCode(9200000 + i + 1)
         }))
       );
 
@@ -439,7 +451,7 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
 
       const allocator = new AtomicVoucherAllocator(
         Array.from({ length: NUM }, (_, i) => ({
-          code: `PERF-${(i + 1).toString().padStart(6, '0')}`
+          code: numericCode(9300000 + i + 1)
         }))
       );
 
@@ -456,6 +468,54 @@ describe('Concurrency & Voucher Leakage Tests (PAN-64)', () => {
       const stats = allocator.getStats();
       expect(stats.redeemed).toBe(NUM);
       expect(stats.duplicatedCodes).toBe(0);
+    });
+  });
+
+  // --- Section 7: PAN-95 Voucher Code Format Compliance ---
+  describe('PAN-95: 10-Digit Numeric Voucher Code Format', () => {
+    test('VOUCHER_CODE_REGEX matches exactly 10-digit numeric strings', () => {
+      // Valid: exactly 10 digits
+      expect(VOUCHER_CODE_REGEX.test('0000000001')).toBe(true);
+      expect(VOUCHER_CODE_REGEX.test('1234567890')).toBe(true);
+      expect(VOUCHER_CODE_REGEX.test('0000012345')).toBe(true);
+      expect(VOUCHER_CODE_REGEX.test('9999999999')).toBe(true);
+    });
+
+    test('VOUCHER_CODE_REGEX rejects non-compliant formats', () => {
+      // Alpha prefix (old format)
+      expect(VOUCHER_CODE_REGEX.test('CLM-12345678')).toBe(false);
+      // Less than 10 digits
+      expect(VOUCHER_CODE_REGEX.test('123456789')).toBe(false);
+      // More than 10 digits
+      expect(VOUCHER_CODE_REGEX.test('12345678901')).toBe(false);
+      // Letters mixed in
+      expect(VOUCHER_CODE_REGEX.test('123456789A')).toBe(false);
+      // Empty string
+      expect(VOUCHER_CODE_REGEX.test('')).toBe(false);
+      // Spaces
+      expect(VOUCHER_CODE_REGEX.test('0000 00001')).toBe(false);
+    });
+
+    test('All pool mock codes used in this test suite comply with ^[0-9]{10}$', () => {
+      // Spot-check the helper itself
+      for (let n = 1; n <= 10; n++) {
+        const code = numericCode(n);
+        expect(VOUCHER_CODE_REGEX.test(code)).toBe(true);
+        expect(code).toHaveLength(10);
+      }
+    });
+
+    test('Allocator produces only compliant codes when seeded correctly', () => {
+      const NUM = 20;
+      const allocator = new AtomicVoucherAllocator(
+        Array.from({ length: NUM }, (_, i) => ({ code: numericCode(9500000 + i + 1) }))
+      );
+
+      for (let i = 0; i < NUM; i++) {
+        const r = allocator.allocate(`COMPLY-PH-${i}`, 30.00, '2026-09-16', 'ComplianceTest');
+        expect(r.success).toBe(true);
+        expect(VOUCHER_CODE_REGEX.test(r.voucher_code!)).toBe(true);
+      }
     });
   });
 });
