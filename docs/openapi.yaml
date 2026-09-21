@@ -2,37 +2,47 @@ openapi: 3.1.0
 info:
   title: 321 Clementi Parking Barcode Engine API
   version: 1.1.0
-  description: |
-    Autonomous receipt-to-barcode parking redemption engine for 321 Clementi Mall.
-    Covers plain-text plate normalization, managed store directory, claim history, and self-service unclaim recovery.
-servers:
-  - url: https://321clementi-parking-barcode.vercel.app/api/v1
-    description: Production Environment
-  - url: http://localhost:4321/api/v1
-    description: Local Development Environment
+  description: 'Autonomous receipt-to-barcode parking redemption engine for 321 Clementi
+    Mall.
 
+    Covers plain-text plate normalization, managed store directory, claim history,
+    and self-service unclaim recovery.
+
+    '
+servers:
+- url: https://321clementi-parking-barcode.vercel.app/api/v1
+  description: Production Environment
+- url: http://localhost:4321/api/v1
+  description: Local Development Environment
 paths:
   /shops:
     get:
       summary: Retrieve Tenant Store Directory
-      description: |
-        Returns list of mall tenant stores for form population. By default, returns only active, promotion-eligible retail stores (excluding non-retail facilities and excluded clinics).
+      description: 'Returns list of mall tenant stores for form population. By default,
+        returns only active, promotion-eligible retail stores (excluding non-retail
+        facilities and excluded clinics).
+
+        '
       operationId: getShops
       parameters:
-        - name: category
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [Dine, Learn, Relax, Services]
-          description: Filter shops by mall directory category
-        - name: eligible_only
-          in: query
-          required: false
-          schema:
-            type: boolean
-            default: true
-          description: When true, only returns promotion-eligible stores
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - Dine
+          - Learn
+          - Relax
+          - Services
+        description: Filter shops by mall directory category
+      - name: eligible_only
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+        description: When true, only returns promotion-eligible stores
       responses:
         '200':
           description: Successful retrieval of tenant shops
@@ -40,7 +50,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, count, data]
+                required:
+                - success
+                - count
+                - data
                 properties:
                   success:
                     type: boolean
@@ -52,12 +65,14 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Shop'
-
   /redemptions:
     post:
       summary: Submit Receipt & Claim Parking Voucher
-      description: |
-        Intake submission for receipt-to-barcode redemption. Validates receipt photo, plain-text vehicle plate, and selected tenant store. Allocates Code 128 barcode voucher atomically.
+      description: 'Intake submission for receipt-to-barcode redemption. Validates
+        receipt photo, plain-text vehicle plate, and selected tenant store. Allocates
+        Code 128 barcode voucher atomically.
+
+        '
       operationId: createRedemption
       requestBody:
         required: true
@@ -65,27 +80,40 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [vehiclePlate, receipt, shopId, timestamp]
+              required:
+              - vehiclePlate
+              - receiptImage
+              - shopId
+              - form_rendered_at
+              - cf-turnstile-response
               properties:
                 vehiclePlate:
                   type: string
                   minLength: 2
                   maxLength: 16
-                  example: "SBA 1234 A"
-                  description: "Plain-text vehicle registration number (SG, MY, or international)"
-                receipt:
-                  type: string
-                  format: binary
-                  description: "Proof of spend receipt image (JPEG, PNG, WEBP, max 20MB)"
+                  example: SBA 1234 A
+                  description: Plain-text vehicle registration number (SG, MY, or
+                    international)
                 shopId:
                   type: string
                   format: uuid
-                  example: "8c79b97b-3225-522b-0705-928ef318dcc4"
-                  description: "UUID of the qualifying tenant shop from /shops"
-                timestamp:
+                  example: 8c79b97b-3225-522b-0705-928ef318dcc4
+                  description: UUID of the qualifying tenant shop from /shops
+                receiptImage:
+                  type: string
+                  format: binary
+                  description: Proof of spend receipt image (JPEG, PNG, WEBP, max
+                    20MB)
+                form_rendered_at:
                   type: string
                   format: date-time
-                  example: "2026-09-17T12:30:00Z"
+                  example: '2026-09-17T12:30:00Z'
+                hp_company_field:
+                  type: string
+                  description: Honeypot field for bot detection. Must be left empty.
+                cf-turnstile-response:
+                  type: string
+                  description: Cloudflare Turnstile token
       responses:
         '201':
           description: Voucher successfully allocated
@@ -93,7 +121,9 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required:
+                - success
+                - data
                 properties:
                   success:
                     type: boolean
@@ -101,13 +131,14 @@ paths:
                   data:
                     $ref: '#/components/schemas/RedemptionSuccess'
         '400':
-          description: Validation error (spend < $30, invalid plate format, missing shop)
+          description: Validation error (spend < $30, invalid plate format, missing
+            shop)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: Outside operating hours (12:00–15:00 SGT weekdays only)
+          description: "Outside operating hours (12:00\u201315:00 SGT weekdays only)"
           content:
             application/json:
               schema:
@@ -124,28 +155,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
   /redemptions/history:
     get:
       summary: Retrieve Claim History by Vehicle Plate
-      description: |
-        Retrieves claim history and recovery status for a given vehicle plate. Allows shoppers to retrieve lost barcodes or initiate unclaim.
+      description: 'Retrieves claim history and recovery status for a given vehicle
+        plate. Allows shoppers to retrieve lost barcodes or initiate unclaim.
+
+        '
       operationId: getPlateHistory
       parameters:
-        - name: plate
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 2
-            maxLength: 16
-          description: Plain-text vehicle registration number
-        - name: X-Claim-Token
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Bearer claim token from client localStorage
+      - name: plate
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 16
+        description: Plain-text vehicle registration number
+      - name: X-Claim-Token
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Bearer claim token from client localStorage
       responses:
         '200':
           description: List of redemption records for vehicle plate
@@ -153,14 +185,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, vehicle_plate, data]
+                required:
+                - success
+                - vehicle_plate
+                - data
                 properties:
                   success:
                     type: boolean
                     example: true
                   vehicle_plate:
                     type: string
-                    example: "SBA 1234 A"
+                    example: SBA 1234 A
                   data:
                     type: array
                     items:
@@ -177,12 +212,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
   /redemptions/unclaim:
     post:
       summary: Unclaim Voucher and Release Daily Quota
-      description: |
-        Releases an active voucher back to the available pool and marks redemption log as UNCLAIMED. Allows shopper to recover from a lost browser session or expired countdown window.
+      description: 'Releases an active voucher back to the available pool and marks
+        redemption log as UNCLAIMED. Allows shopper to recover from a lost browser
+        session or expired countdown window.
+
+        '
       operationId: unclaimRedemption
       requestBody:
         required: true
@@ -190,7 +227,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [id]
+              required:
+              - id
               properties:
                 id:
                   type: string
@@ -198,20 +236,22 @@ paths:
                   description: Redemption record UUID (required, in JSON body)
                 vehicle_plate:
                   type: string
-                  example: "SBA 1234 A"
+                  example: SBA 1234 A
                 receipt_amount:
                   type: number
                   format: float
-                  example: 34.50
-                  description: "Required for fallback verification if X-Claim-Token is omitted"
+                  example: 34.5
+                  description: Required for fallback verification if X-Claim-Token
+                    is omitted
                 shop_id:
                   type: string
                   format: uuid
-                  example: "8c79b97b-3225-522b-0705-928ef318dcc4"
-                  description: "Required for fallback verification if X-Claim-Token is omitted"
+                  example: 8c79b97b-3225-522b-0705-928ef318dcc4
+                  description: Required for fallback verification if X-Claim-Token
+                    is omitted
                 reason:
                   type: string
-                  example: "MISSED_EXIT_WINDOW"
+                  example: MISSED_EXIT_WINDOW
       responses:
         '200':
           description: Voucher successfully unclaimed and quota released
@@ -219,17 +259,25 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, message, data]
+                required:
+                - success
+                - message
+                - data
                 properties:
                   success:
                     type: boolean
                     example: true
                   message:
                     type: string
-                    example: "Voucher successfully unclaimed. Daily redemption limit has been released."
+                    example: Voucher successfully unclaimed. Daily redemption limit
+                      has been released.
                   data:
                     type: object
-                    required: [redemption_id, vehicle_plate, status, unclaimed_at]
+                    required:
+                    - redemption_id
+                    - vehicle_plate
+                    - status
+                    - unclaimed_at
                     properties:
                       redemption_id:
                         type: string
@@ -238,7 +286,7 @@ paths:
                         type: string
                       status:
                         type: string
-                        example: "UNCLAIMED"
+                        example: UNCLAIMED
                       unclaimed_at:
                         type: string
                         format: date-time
@@ -266,103 +314,228 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
+  /admin/shops:
+    post:
+      summary: Create Merchant Shop
+      description: Admin API to create a new merchant shop.
+      operationId: adminCreateShop
+      security:
+      - AdminKeyAuth: []
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - slug
+              - category
+              - level
+              - unit
+              - is_eligible
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                category:
+                  type: string
+                level:
+                  type: string
+                unit:
+                  type: string
+                is_eligible:
+                  type: boolean
+      responses:
+        '201':
+          description: Shop created
+    patch:
+      summary: Update Merchant Shop
+      description: Admin API to update an existing merchant shop.
+      operationId: adminUpdateShop
+      security:
+      - AdminKeyAuth: []
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                is_eligible:
+                  type: boolean
+      responses:
+        '200':
+          description: Shop updated
+    delete:
+      summary: Delete Merchant Shop
+      description: Admin API to delete a merchant shop.
+      operationId: adminDeleteShop
+      security:
+      - AdminKeyAuth: []
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - id
+              properties:
+                id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Shop deleted
 components:
   schemas:
     Shop:
       type: object
-      required: [id, name, slug, category, level, unit, is_eligible]
+      required:
+      - id
+      - name
+      - slug
+      - category
+      - level
+      - unit
+      - is_eligible
       properties:
         id:
           type: string
           format: uuid
-          example: "7b68a86a-2114-411a-9694-817de207cbb3"
+          example: 7b68a86a-2114-411a-9694-817de207cbb3
         name:
           type: string
-          example: "Huang Tu Di Xi'An Delights"
+          example: Huang Tu Di Xi'An Delights
         slug:
           type: string
-          example: "huang-tu-di-xi-an-delights"
+          example: huang-tu-di-xi-an-delights
         category:
           type: string
-          enum: [Dine, Learn, Relax, Services]
-          example: "Dine"
+          enum:
+          - Dine
+          - Learn
+          - Relax
+          - Services
+          example: Dine
         level:
           type: string
-          example: "L2"
+          example: L2
         unit:
           type: string
-          example: "#02-08"
+          example: '#02-08'
         is_eligible:
           type: boolean
           example: true
-
     RedemptionSuccess:
       type: object
-      required: [redemption_id, vehicle_plate, voucher_code, barcode_format, shop_name, receipt_amount, claim_token, status, expires_at, created_at]
+      required:
+      - redemption_id
+      - vehicle_plate
+      - voucher_code
+      - barcode_format
+      - shop_name
+      - receipt_amount
+      - claim_token
+      - status
+      - expires_at
+      - created_at
       properties:
         redemption_id:
           type: string
           format: uuid
         vehicle_plate:
           type: string
-          example: "SBA 1234 A"
+          example: SBA 1234 A
         voucher_code:
           type: string
-          example: "CLM-98765432"
+          example: '1234567890'
+          pattern: ^[0-9]{10}$
         barcode_format:
           type: string
-          example: "CODE128"
+          example: CODE128
         shop_name:
           type: string
-          example: "Saizeriya"
+          example: Saizeriya
         receipt_amount:
           type: number
           format: float
-          example: 34.50
+          example: 34.5
         claim_token:
           type: string
-          example: "ct_8f9e0d1c2b3a4f5e6d7c8b9a0f1e2d3c"
-          description: "Bearer secret token to store in client localStorage for unclaim operations"
+          example: ct_8f9e0d1c2b3a4f5e6d7c8b9a0f1e2d3c
+          description: Bearer secret token to store in client localStorage for unclaim
+            operations
         status:
           type: string
-          enum: [CLAIMED, UNCLAIMED, RE_REDEEMED, EXPIRED]
-          example: "CLAIMED"
+          enum:
+          - CLAIMED
+          - UNCLAIMED
+          - RE_REDEEMED
+          - EXPIRED
+          example: CLAIMED
         expires_at:
           type: string
           format: date-time
         created_at:
           type: string
           format: date-time
-
     RedemptionHistoryItem:
       type: object
-      required: [id, voucher_code, barcode_format, receipt_amount, receipt_date, shop_name, status, can_unclaim, can_resume, expires_at, created_at]
+      required:
+      - id
+      - voucher_code
+      - barcode_format
+      - receipt_amount
+      - receipt_date
+      - shop_name
+      - status
+      - can_unclaim
+      - can_resume
+      - expires_at
+      - created_at
       properties:
         id:
           type: string
           format: uuid
         voucher_code:
           type: string
-          example: "CLM-98765432"
+          example: '1234567890'
+          pattern: ^[0-9]{10}$
         barcode_format:
           type: string
-          example: "CODE128"
+          example: CODE128
         receipt_amount:
           type: number
           format: float
-          example: 34.50
+          example: 34.5
         receipt_date:
           type: string
           format: date
-          example: "2026-09-17"
+          example: '2026-09-17'
         shop_name:
           type: string
-          example: "Saizeriya"
+          example: Saizeriya
         status:
           type: string
-          enum: [CLAIMED, UNCLAIMED, RE_REDEEMED, EXPIRED]
-          example: "CLAIMED"
+          enum:
+          - CLAIMED
+          - UNCLAIMED
+          - RE_REDEEMED
+          - EXPIRED
+          example: CLAIMED
         can_unclaim:
           type: boolean
           example: true
@@ -375,17 +548,28 @@ components:
         created_at:
           type: string
           format: date-time
-
     ErrorResponse:
       type: object
-      required: [success, error, message]
+      required:
+      - success
+      - error
+      - message
       properties:
         success:
           type: boolean
           example: false
         error:
           type: string
-          example: "DAILY_LIMIT_EXCEEDED"
+          example: DAILY_LIMIT_EXCEEDED
         message:
           type: string
-          example: "Vehicle SBA 1234 A has already redeemed a complimentary parking voucher for today."
+          example: Vehicle SBA 1234 A has already redeemed a complimentary parking
+            voucher for today.
+  securitySchemes:
+    AdminKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+    BearerAuth:
+      type: http
+      scheme: bearer

@@ -38,6 +38,7 @@ Autonomous receipt-to-barcode parking redemption engine for **321 Clementi Mall*
 ## Features
 
 - **Instant barcode generation** — Code 128 rendered client-side via `jsbarcode`; zero server round-trip for display
+- **Client-side barcode download** — Offline saving utility that allows shoppers to download the rendered Code 128 voucher image
 - **LTA MOD-19 plate validation** — Singapore vehicle plate checksum enforced before any reservation attempt
 - **AI receipt verification** — Gemini 1.5 Flash Vision confirms minimum $30 spend and same-day date on uploaded receipts
 - **Receipt deduplication** — Cryptographic hash prevents the same receipt being redeemed twice across different plates
@@ -67,13 +68,14 @@ Full OpenAPI 3.1 specification: [`docs/openapi.yaml`](./docs/openapi.yaml)
 
 ## Database Schema
 
-Three PostgreSQL 16 migrations under `migrations/`:
+Four PostgreSQL 16 migrations under `migrations/`:
 
 | Migration | Description |
 |-----------|-------------|
 | `0001` | `voucher_pool` + `redemption_logs` — core FIFO voucher reservation and audit trail |
 | `0002` | `shops` table + unclaim support columns on `redemption_logs` |
 | `0003` | Receipt hash deduplication index + AI verification result columns |
+| `0004` | Enforce 10-digit numeric codes check constraint |
 
 Run migrations:
 
@@ -91,6 +93,8 @@ bun run db:status    # show applied / pending state
 - [Brand Identity & Design System](./docs/design/design.md)
 - [OpenAPI Specification](./docs/openapi.yaml)
 - [ADR-001: Plate History, Unclaim & Shop Selection](./docs/adr/ADR-001-plate-history-unclaim-shop-selection.md)
+- [Shop Management SOP](./docs/operations/SHOP_MANAGEMENT_SOP.md)
+- [Security Audit Report](./docs/security/SECURITY_AUDIT_REPORT.md)
 
 ---
 
@@ -104,7 +108,7 @@ bun install
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env — fill in DATABASE_URL, ADMIN_API_KEY, GEMINI_API_KEY,
+# Edit .env — fill in NODE_ENV, DATABASE_URL, ADMIN_API_KEY, GEMINI_API_KEY,
 # PLATE_HMAC_SECRET, Cloudflare Turnstile keys, and n8n URLs
 # See the "Environment Variables" table under Deployment for full details
 
@@ -157,6 +161,7 @@ Copy `.env.example` to `.env` and populate every variable before running the app
 
 | Variable | Required | Context | Description | Example / How to Obtain |
 |---|---|---|---|---|
+| `NODE_ENV` | Optional | Backend | Node runtime environment for optimisations. | `development` or `production` |
 | `DATABASE_URL` | ✅ | Backend / Migrations | PostgreSQL 16 connection URI used by the app server and `bun run db:migrate`. | `postgresql://user:password@host:5432/clementi_redemption` |
 | `TEST_DATABASE_URL` | ✅ | CI / Local Tests | Separate PostgreSQL URI for the isolated test database (never the production DB). | `postgresql://postgres:password@localhost:55432/test_clementi` |
 | `PUBLIC_REDEMPTION_WEBHOOK_URL` | ✅ | Frontend (public) | Public HTTPS webhook endpoint exposed to the browser for the n8n receipt verification workflow. Must be an `https://` URL. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
