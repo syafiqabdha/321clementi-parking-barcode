@@ -327,6 +327,13 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         <svg id="barcode-svg" class="max-w-full"></svg>
       </div>
 
+      <!-- Hidden canvas used for PNG export (mobile gallery compatible) -->
+      <canvas
+        id="barcode-download-canvas"
+        class="fixed top-0 left-0 -z-50 opacity-0 pointer-events-none"
+        aria-hidden="true"
+      ></canvas>
+
       <div id="barcode-code-text" class="font-mono font-black text-base sm:text-lg tracking-widest text-slate-950 mt-1 select-all">
         CLM-12345678
       </div>
@@ -369,6 +376,18 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       >
         <span class="material-symbols-outlined text-base">home</span>
         <span>Back to Home</span>
+      </button>
+    </div>
+
+    <!-- Download Barcode (Canvas-to-PNG for mobile gallery compatibility) -->
+    <div class="pt-1">
+      <button
+        type="button"
+        id="download-barcode-btn"
+        class="w-full flex items-center justify-center gap-1.5 rounded-xl py-3 px-4 font-display font-bold text-xs tracking-wider uppercase text-white bg-slate-900 hover:bg-slate-800 active:bg-slate-700 border border-slate-900 transition-all shadow-xs"
+      >
+        <span class="material-symbols-outlined text-base">download</span>
+        <span>Download Barcode</span>
       </button>
     </div>
   </div>
@@ -415,6 +434,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const barcodeSvg = document.getElementById('barcode-svg') as SVGSVGElement;
   const barcodeCodeText = document.getElementById('barcode-code-text') as HTMLElement;
   const resultPlateDisplay = document.getElementById('result-plate-display') as HTMLElement;
+  const downloadBarcodeBtn = document.getElementById('download-barcode-btn') as HTMLButtonElement;
+  const downloadCanvas = document.getElementById('barcode-download-canvas') as HTMLCanvasElement;
   const resetBtn = document.getElementById('reset-redemption-btn') as HTMLButtonElement;
   const passUnclaimBtn = document.getElementById('pass-unclaim-btn') as HTMLButtonElement;
   const barcodeBoxTrigger = document.getElementById('barcode-box-trigger') as HTMLElement;
@@ -673,8 +694,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
           localStorage.setItem(`clementi_claim_token_plate_${rawPlate}`, claimToken);
         }
       } catch {
-        // Fallback for static preview/mock environments
-        voucherCode = `CLM-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        // Fallback for static preview/mock environments (strict 10-digit numeric per PAN-95)
+        voucherCode = String(Math.floor(1000000000 + Math.random() * 9000000000));
         redemptionId = `mock-${Date.now()}`;
         claimToken = `tk_mock_${Date.now()}`;
         localStorage.setItem(`clementi_claim_token_${redemptionId}`, claimToken);
@@ -726,6 +747,35 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     formSection.classList.remove('hidden');
     hideError();
   });
+
+  // Download Barcode as PNG (Canvas-to-PNG for native mobile gallery support)
+  function downloadBarcodePng() {
+    if (!currentVoucherCode || !downloadCanvas) return;
+
+    try {
+      JsBarcode(downloadCanvas, currentVoucherCode, {
+        format: 'CODE128',
+        width: 2.5,
+        height: 100,
+        displayValue: false,
+        margin: 12,
+        background: '#FFFFFF',
+        lineColor: '#000000',
+      });
+
+      const dataUrl = downloadCanvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `321Clementi-Barcode-${currentVoucherCode}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Barcode PNG download error:', err);
+    }
+  }
+
+  downloadBarcodeBtn?.addEventListener('click', downloadBarcodePng);
 
   // ============================================================================
   // 4. CLICK-TO-ENLARGE BARCODE MODAL (PAN-75 Scope 4 / PAN-82 Wake Lock)
