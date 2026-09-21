@@ -66,14 +66,16 @@ beforeAll(async () => {
 
   // 4. Initialize Bun SQL client
   sql = new SQL(PG_URL);
-});
+  // Docker boot legitimately takes >5s under full-suite parallel load; bun's default
+  // hook budget is 5s, which made this file intermittently fail. Explicit budget here.
+}, 60_000);
 
 afterAll(async () => {
   if (sql) {
     await sql.close();
   }
   spawnSync('docker', ['rm', '-f', CONTAINER_NAME], { stdio: 'ignore' });
-});
+}, 30_000);
 
 describe('PostgreSQL 16 Schema Migrations (PAN-59)', () => {
   test('PostgreSQL server version is confirmed 16.x', async () => {
