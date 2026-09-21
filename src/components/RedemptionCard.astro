@@ -335,7 +335,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       ></canvas>
 
       <div id="barcode-code-text" class="font-mono font-black text-base sm:text-lg tracking-widest text-slate-950 mt-1 select-all">
-        CLM-12345678
+        0000000000
       </div>
     </div>
 
@@ -986,7 +986,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
       let actionsHtml = '';
       if (record.status === 'CLAIMED') {
-        const isMasked = !record.voucher_code || record.voucher_code === 'CLM-••••••••';
+        const isMasked = !record.voucher_code || record.voucher_code === '••••••••••';
         const canResume = record.can_resume === true;
         actionsHtml = `
           <div class="flex gap-2 pt-1">
