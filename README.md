@@ -21,7 +21,7 @@ Autonomous receipt-to-barcode parking redemption engine for **321 Clementi Mall*
                            ▼
           [n8n Automation Engine (n8n.pancatz.com)]
            ├── 1. Fast Gate: 12:00–15:00 SGT Weekdays only
-           ├── 2. Fast Gate: LTA MOD-19 Vehicle Plate Checksum
+           ├── 2. Fast Gate: Plain-text Cross-border Plate Canonicalization
            ├── 3. Deduplication: 1 redemption per plate + receipt daily
            ├── 4. Gemini 1.5 Flash Vision: Min $30 spend & date check
            └── 5. PostgreSQL: Atomic FIFO Voucher Allocation (SKIP LOCKED)
@@ -39,7 +39,7 @@ Autonomous receipt-to-barcode parking redemption engine for **321 Clementi Mall*
 
 - **Instant barcode generation** — Code 128 rendered client-side via `jsbarcode`; zero server round-trip for display
 - **Client-side barcode download** — Offline saving utility that allows shoppers to download the rendered Code 128 voucher image
-- **LTA MOD-19 plate validation** — Singapore vehicle plate checksum enforced before any reservation attempt
+- **Plain-text plate canonicalization** — NFKC normalization and whitespace stripping accommodates Singapore, Malaysian, and commercial plates without false rejections
 - **AI receipt verification** — Gemini 1.5 Flash Vision confirms minimum $30 spend and same-day date on uploaded receipts
 - **Receipt deduplication** — Cryptographic hash prevents the same receipt being redeemed twice across different plates
 - **Anti-bot rate limiting** — IP + plate-based rate limiter with sliding window (configurable burst/refill)
@@ -133,7 +133,8 @@ bun test
 
 | Test File | Coverage Area |
 |-----------|---------------|
-| `mod19.test.ts` | LTA MOD-19 vehicle plate checksum validation |
+| `mod19.test.ts` | (Deprecated) LTA MOD-19 plate checksum validation (replaced by plain-text canonicalization) |
+| `plate-normalization.test.ts` | Plain-text plate canonicalization (NFKC, whitespace stripping) |
 | `operating-hours-gate.test.ts` | 12:00–15:00 SGT weekday operating hours gate |
 | `concurrency-leakage.test.ts` | Atomic FIFO voucher allocation & concurrency safety |
 | `migrations.test.ts` | Up/down migration idempotency & schema correctness |
@@ -180,5 +181,5 @@ Continuous integration is orchestrated via [`.github/workflows/ci.yml`](./.githu
 1. **Dependency Resolution**: `bun install --frozen-lockfile`
 2. **Static Typecheck**: `bun run typecheck`
 3. **Production Build**: `bun run build`
-4. **Automated Test Suite**: `bun test` (297 test cases covering MOD-19 validation, operating hours gating, concurrency/FIFO allocation, receipt deduplication, rate limiting, and PostgreSQL 16 migrations)
+4. **Automated Test Suite**: `bun test` (297 test cases covering plain-text plate normalization, operating hours gating, concurrency/FIFO allocation, receipt deduplication, rate limiting, and PostgreSQL 16 migrations)
 
