@@ -5,6 +5,7 @@
 // click-to-enlarge barcode modal, and claim history & recovery state machine.
 import BarcodeModal from './BarcodeModal.astro';
 import ClaimHistoryModal from './ClaimHistoryModal.astro';
+const turnstileSiteKey = import.meta.env.PUBLIC_TURNSTILE_SITE_KEY;
 ---
 
 <div
@@ -158,6 +159,15 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
           </p>
         </div>
       </div>
+
+      
+      <!-- Cloudflare Turnstile -->
+      {turnstileSiteKey && (
+        <div class="flex justify-center pt-2">
+          <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="light"></div>
+          <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer is:inline></script>
+        </div>
+      )}
 
       <!-- Action Button (Clementi Crimson #ED1651) -->
       <div class="pt-1">
@@ -578,9 +588,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
     try {
       const formData = new FormData();
-      formData.append('receipt', downsampledBlob, 'receipt.jpg');
+      formData.append('receiptImage', downsampledBlob, 'receipt.jpg');
       formData.append('shopId', selectedShopId);
-      formData.append('timestamp', new Date().toISOString());
+      formData.append('form_rendered_at', new Date().toISOString());
+
+      const turnstileResponse = document.querySelector('[name="cf-turnstile-response"]') as HTMLInputElement;
+      if (turnstileResponse && turnstileResponse.value) {
+        formData.append('cf-turnstile-response', turnstileResponse.value);
+      }
 
       let voucherCode: string = '';
       let redemptionId: string = '';
