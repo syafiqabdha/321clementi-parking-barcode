@@ -158,15 +158,27 @@ bun test
 The portal is deployed to Vercel as an **on-demand rendered Astro 5 app** using the
 [`@astrojs/vercel`](https://docs.astro.build/en/guides/integrations-guide/vercel/) adapter
 (`output: 'server'` in [`astro.config.mjs`](./astro.config.mjs)). `vercel.json` carries the
-build/install commands, the `sin1` (Singapore) function region, and the security/caching headers.
+build/install commands, the requested function region, and the security/caching headers.
 
 - `/api/v1/**` — five request-time handlers bundled into a single Vercel Function (`_render`), with the `postgres` npm driver talking to PostgreSQL 16.
 - `/` — prerendered to a static file and served from the CDN (`export const prerender = true` in `src/pages/index.astro`).
-- Functions are pinned to `sin1`; keep the database in Singapore (or `ap-southeast-1`) to avoid cross-region latency.
+- `vercel.json` requests the `sin1` (Singapore) function region. **This is not independently confirmed**: `@astrojs/vercel` emits no region into `.vercel/output/functions/_render.func/.vc-config.json`, so it depends on Vercel applying `vercel.json` at deploy time. Verify with `vercel inspect <deployment-url>` after the first deploy and keep the database in Singapore (`ap-southeast-1`) either way.
 
 Deployment is driven by Vercel's Git integration: pull requests get preview URLs, `main` deploys to production. `vercel.json` deliberately omits `outputDirectory` — the adapter writes the Build Output API v3 tree to `.vercel/output`, and declaring `dist` there makes Vercel serve the stale static build instead of the functions.
 
-Astro's `security.checkOrigin` CSRF middleware protects every POST endpoint, and it derives this deployment's own origin from the `x-forwarded-host` header that Vercel sets. That only works for hostnames listed in `security.allowedDomains` in `astro.config.mjs` — with an empty list Astro silently falls back to `localhost` and rejects every same-origin POST with `403 Cross-site POST form submissions are forbidden`. The defaults cover `*.vercel.app`, `*.pancatz.com`, `localhost` and `127.0.0.1`; add a custom domain via the `ALLOWED_SITE_DOMAINS` build variable (comma separated) rather than editing the config.
+Astro's `security.checkOrigin` CSRF middleware protects every POST endpoint, and it derives this deployment's own origin from the `x-forwarded-host` header that Vercel sets. That only works for hostnames listed in `security.allowedDomains` in `astro.config.mjs` — with an empty list Astro silently falls back to `localhost` and rejects every same-origin POST with `403 Cross-site POST form submissions are forbidden`. The defaults cover `*.vercel.app`, `*.pancatz.com`, `localhost` and `127.0.0.1` (public hosts are pinned to `https`); add a custom domain via the `ALLOWED_SITE_DOMAINS` build variable (comma separated, `https://` assumed) rather than editing the config.
+
+HSTS is sent as `max-age=31536000` **without** `includeSubDomains`. If this app ever lands on an apex domain (`pancatz.com` rather than `321clementi.pancatz.com`), `includeSubDomains` would force HTTPS on every sibling subdomain — including `n8n.pancatz.com` and `nocodb.pancatz.com`. Add it only once the production hostname is known and the siblings are confirmed HTTPS-only.
+
+#### Deployment smoke test
+
+CI's artifact gates only inspect files. This one runs the artifact:
+
+```bash
+bun run build && bun run verify:deploy
+```
+
+It boots `.vercel/output/functions/_render.func` under the real Node.js runtime against a throwaway PostgreSQL 16 container and a mock receipt verifier, then asserts that a same-origin browser POST carrying Vercel's forwarded headers is **not** `403` (the CSRF allowlist regression guard), that the `postgres` driver returns live rows on Node, that `POST /api/v1/redemptions` allocates a voucher end to end, and that production fails closed without Turnstile. Requires Docker.
 
 #### Environment Variables
 
@@ -182,7 +194,7 @@ Copy `.env.example` to `.env` and populate every variable before running the app
 | `PG_CONNECT_TIMEOUT` | Optional | Backend | Seconds to wait for a new connection. Default `10`. | `10` |
 | `PG_PREPARE` | Optional | Backend | Set `true` **only** for direct/session-mode endpoints. Must stay `false` (the default) behind a transaction-mode pooler, which cannot keep prepared statements alive between queries. | `false` |
 | `PG_SSL` | Optional | Backend | Force TLS when `DATABASE_URL` carries no `sslmode=` parameter. | `true` |
-| `PG_SSL_NO_VERIFY` | Optional | Backend | Skip certificate verification — self-signed certificates only. | `false` |
+| `PG_SSL_NO_VERIFY` | Optional | Backend | Skip certificate verification — self-signed certificates only. An explicit `sslmode=verify-full`/`verify-ca` in `DATABASE_URL` takes precedence and is never downgraded by this flag, so it cannot silently weaken a managed endpoint. | `false` |
 | `PUBLIC_REDEMPTION_WEBHOOK_URL` | ⚠️ Unused | Frontend (public) | Declared for the n8n receipt workflow, but **no source file reads it** — receipt verification runs server-side via `GEMINI_API_KEY` / `N8N_RECEIPT_VERIFIER_URL`. Safe to omit. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
 | `N8N_WEBHOOK_URL` | ✅ | Backend | Server-side n8n webhook URL for internal API-to-n8n calls. Usually the same as `PUBLIC_REDEMPTION_WEBHOOK_URL`; keep separate for network-internal routing. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
 | `PLATE_HMAC_SECRET` | ✅ | Backend (PII) | 64-character cryptographically random hex secret used as HMAC-SHA256 pepper for vehicle plate hashing (PDPA compliance, SEC-05). Generate with: `openssl rand -hex 32` | `a0b1c2d3...` (64 hex chars) |

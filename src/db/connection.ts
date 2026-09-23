@@ -31,10 +31,16 @@ function shouldPrepare(): boolean {
  *  Postgres behind a private network/VPN may still need TLS forced on, and a
  *  self-signed cert needs verification relaxed. Both are opt-in. */
 function sslOptions(url: string): false | { rejectUnauthorized: boolean } | undefined {
-  const fromUrl = /[?&]sslmode=(require|prefer|verify-ca|verify-full|no-verify)/.test(url);
+  // An explicit verification level in the connection string is the strongest
+  // signal about the endpoint's certificate, so it is decided first:
+  // PG_SSL_NO_VERIFY is an escape hatch for self-signed certs and must never
+  // silently downgrade an explicit sslmode=verify-full/verify-ca.
+  if (/[?&]sslmode=(verify-ca|verify-full)/.test(url)) return { rejectUnauthorized: true };
+
+  const fromUrl = /[?&]sslmode=(require|prefer|no-verify)/.test(url);
   const forced = process.env.PG_SSL === 'true';
   if (!fromUrl && !forced) return undefined;
-  if (/sslmode=(prefer|no-verify)/.test(url) || process.env.PG_SSL_NO_VERIFY === 'true') {
+  if (/[?&]sslmode=(prefer|no-verify)/.test(url) || process.env.PG_SSL_NO_VERIFY === 'true') {
     return { rejectUnauthorized: false };
   }
   return { rejectUnauthorized: true };

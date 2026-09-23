@@ -24,16 +24,24 @@ const extraDomains = (process.env.ALLOWED_SITE_DOMAINS ?? '')
   .split(',')
   .map((d) => d.trim())
   .filter(Boolean)
-  .map((hostname) => ({ hostname }));
+  .map((entry) => {
+    // Default to https — these are real deployment hostnames. An explicit
+    // scheme is honoured so a plain-http staging host stays possible.
+    const [scheme, host] = entry.includes('://') ? entry.split('://') : ['https', entry];
+    return { hostname: host, protocol: scheme };
+  });
 
 const allowedDomains = [
-  // Production + preview deployments (*.vercel.app matches a single subdomain
-  // label, which is what Vercel assigns).
-  { hostname: '*.vercel.app' },
+  // Production + preview deployments. `*.vercel.app` matches a single subdomain
+  // label, which is what Vercel assigns to both the production alias and the
+  // per-branch preview URLs. Protocol is pinned so an http:// origin on the
+  // same hostname is not silently trusted.
+  { hostname: '*.vercel.app', protocol: 'https' },
   // PandaTZ self-hosted services; covers a custom 321clementi.<domain> later.
-  { hostname: '*.pancatz.com' },
-  { hostname: 'pancatz.com' },
-  // `bun run dev` / `astro preview` on http://localhost:4321
+  { hostname: '*.pancatz.com', protocol: 'https' },
+  { hostname: 'pancatz.com', protocol: 'https' },
+  // `bun run dev` / `astro preview` on http://localhost:4321 — left
+  // protocol-agnostic so local http development keeps working.
   { hostname: 'localhost' },
   { hostname: '127.0.0.1' },
   ...extraDomains,

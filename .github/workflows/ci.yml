@@ -96,3 +96,11 @@ jobs:
 
       - name: Run test suite
         run: bun test
+
+      # The gates above only inspect artifacts. This one runs the artifact: it
+      # boots the built function under the real Node runtime with Vercel's
+      # forwarded headers and asserts a same-origin form POST is not 403. That
+      # is the only check that exercises the CSRF origin path end to end, and
+      # it also covers POST /api/v1/redemptions, which no unit test imports.
+      - name: Serverless deployment smoke test
+        run: bun run verify:deploy
