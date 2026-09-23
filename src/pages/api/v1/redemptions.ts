@@ -1,14 +1,14 @@
 /**
  * POST /api/v1/redemptions
- * Submit receipt, vehicle plate, and shop for voucher allocation.
+ * Submit receipt for voucher allocation. PAN-104: vehicle plate is now optional (removed as primary tracking key).
  *
  * PAN-84 Gate pipeline (fast-fail order):
  *   Gate 1: Bot detection — honeypot field, timing gate, Cloudflare Turnstile
  *   Gate 2: IP rate limit (3 req / 5 min)
- *   Gate 3: Plate format & shop validation
- *   Gate 4: Daily vehicle limit (space-invariant)
+ *   Gate 3: Shop validation (plate optional)
+ *   Gate 4: (removed) Daily vehicle limit — now enforced by receipt deduplication
  *   Gate 5: Receipt image hash deduplication (SHA-256)
- *   Gate 6: AI Vision receipt verification (Gemini 1.5 Flash / n8n fallback)
+ *   Gate 6: AI Vision receipt verification (Gemini 1.5 Flash / n8n fallback) — enforces 4 LLM rules
  *   Gate 7: Semantic receipt fingerprint deduplication
  *   Gate 8: Atomic CTE voucher allocation
  */
@@ -17,7 +17,6 @@ import type { APIRoute } from 'astro';
 import { getDb } from '../../../db/connection';
 import {
   ATOMIC_ALLOCATION_CTE,
-  CHECK_DAILY_REDEMPTION_QUERY,
   CHECK_RECEIPT_HASH_QUERY,
   CHECK_RECEIPT_FINGERPRINT_QUERY,
   COUNT_AVAILABLE_VOUCHERS_QUERY,
@@ -111,18 +110,12 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // -----------------------------------------------------------------------
-    // Gate 3: Parse & validate required fields
+    // Gate 3: Parse & validate required fields (PAN-104: plate is now optional)
     // -----------------------------------------------------------------------
     const rawPlate = formData.get('vehiclePlate');
     const shopId = formData.get('shopId');
     const receiptFile = formData.get('receiptImage');
 
-    if (!rawPlate || typeof rawPlate !== 'string') {
-      return new Response(
-        JSON.stringify({ success: false, error: 'MISSING_PLATE', message: 'Vehicle plate is required.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
     if (!shopId || typeof shopId !== 'string') {
       return new Response(
         JSON.stringify({ success: false, error: 'MISSING_SHOP', message: 'Shop selection is required.' }),
@@ -136,18 +129,20 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Normalize plate (PAN-84: strips all whitespace)
-    let canonicalPlate: string;
-    try {
-      canonicalPlate = normalizeCarPlate(rawPlate);
-    } catch (err) {
-      if (err instanceof PlateValidationError) {
-        return new Response(
-          JSON.stringify({ success: false, error: err.code, message: err.message }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
+    // Normalize plate if provided (PAN-104: optional)
+    let canonicalPlate: string | null = null;
+    if (rawPlate && typeof rawPlate === 'string' && rawPlate.trim() !== '') {
+      try {
+        canonicalPlate = normalizeCarPlate(rawPlate);
+      } catch (err) {
+        if (err instanceof PlateValidationError) {
+          return new Response(
+            JSON.stringify({ success: false, error: err.code, message: err.message }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw err;
       }
-      throw err;
     }
 
     const sql = getDb();
@@ -213,21 +208,6 @@ export const POST: APIRoute = async ({ request }) => {
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Singapore' });
 
     // -----------------------------------------------------------------------
-    // Gate 4: Daily vehicle limit (space-invariant SQL query)
-    // -----------------------------------------------------------------------
-    const existingRows = await sql.unsafe(CHECK_DAILY_REDEMPTION_QUERY, [canonicalPlate, today]);
-    if (existingRows.length > 0) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'DAILY_LIMIT_EXCEEDED',
-          message: `Vehicle ${canonicalPlate} has already redeemed a complimentary parking voucher for today.`,
-        }),
-        { status: 409, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // -----------------------------------------------------------------------
     // Gate 5: Exact receipt image hash deduplication (SHA-256)
     // -----------------------------------------------------------------------
     const receiptArrayBuffer = await receiptFile.arrayBuffer();
@@ -248,9 +228,10 @@ export const POST: APIRoute = async ({ request }) => {
 
     // -----------------------------------------------------------------------
     // Gate 6: AI Vision receipt verification (Gemini 1.5 Flash / n8n fallback)
+    // Enforces 4 LLM rules: legible receipt, >= $30 spend, today's date, location keyword
     // -----------------------------------------------------------------------
     const mimeType = receiptFile.type || 'image/jpeg';
-    const verifyResult = await verifyReceipt(receiptBytes, mimeType, shop.name);
+    const verifyResult = await verifyReceipt(receiptBytes, mimeType);
 
     if (!verifyResult.valid) {
       return new Response(
@@ -288,17 +269,17 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // -----------------------------------------------------------------------
-    // Gate 8: Atomic CTE voucher allocation
+    // Gate 8: Atomic CTE voucher allocation (PAN-104: plate fields nullable)
     // -----------------------------------------------------------------------
     const claimToken = generateClaimToken();
     const claimTokenHash = await sha256(claimToken);
-    const plateHash = await sha256(canonicalPlate);
+    const plateHash = canonicalPlate ? await sha256(canonicalPlate) : null;
 
     let result: any[];
     try {
       result = await sql.unsafe(ATOMIC_ALLOCATION_CTE, [
-        plateHash,              // $1
-        canonicalPlate,         // $2
+        plateHash,              // $1 (nullable)
+        canonicalPlate,         // $2 (nullable)
         receiptAmount,          // $3
         today,                  // $4
         tenantName,             // $5
@@ -313,20 +294,15 @@ export const POST: APIRoute = async ({ request }) => {
     } catch (err: any) {
       // Detect unique constraint violations (race condition duplicates)
       if (
-        err.message?.includes('uq_redemption_vehicle_daily') ||
         err.message?.includes('uq_redemption_receipt_hash_daily') ||
         err.message?.includes('uq_redemption_receipt_fingerprint_daily') ||
         err.code === '23505'
       ) {
-        const isDuplReceipt =
-          err.message?.includes('receipt_hash') || err.message?.includes('receipt_fingerprint');
         return new Response(
           JSON.stringify({
             success: false,
-            error: isDuplReceipt ? 'DUPLICATE_RECEIPT' : 'DAILY_LIMIT_EXCEEDED',
-            message: isDuplReceipt
-              ? 'This receipt has already been used to claim a voucher today.'
-              : `Vehicle ${canonicalPlate} has already redeemed a voucher today.`,
+            error: 'DUPLICATE_RECEIPT',
+            message: 'This receipt has already been used to claim a voucher today.',
           }),
           { status: 409, headers: { 'Content-Type': 'application/json' } }
         );
@@ -356,7 +332,7 @@ export const POST: APIRoute = async ({ request }) => {
       await sql.unsafe(INSERT_AUDIT_LOG, [
         row.redemption_id,
         'CLAIM',
-        canonicalPlate,
+        canonicalPlate || null,
         row.voucher_code,
         ip,
         ua,
@@ -368,19 +344,19 @@ export const POST: APIRoute = async ({ request }) => {
       // Best-effort audit logging
     }
 
+    // Return success response
     return new Response(
       JSON.stringify({
         success: true,
         data: {
           redemption_id: row.redemption_id,
-          vehicle_plate: canonicalPlate,
           voucher_code: row.voucher_code,
-          barcode_format: row.barcode_format || 'CODE128',
-          shop_name: shop.name,
-          receipt_amount: receiptAmount,
           claim_token: claimToken,
-          status: 'CLAIMED',
-          valid_today: true,
+          receipt_number: receiptNumber,
+          vehicle_plate: canonicalPlate || null,
+          shop_id: resolvedShopId,
+          receipt_amount: receiptAmount,
+          receipt_date: today,
           created_at: new Date().toISOString(),
         },
       }),

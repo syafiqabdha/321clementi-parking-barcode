@@ -36,6 +36,12 @@ jobs:
       - name: Verify TypeScript types
         run: bun run typecheck
 
+      # tsc --noEmit does NOT typecheck .astro <script> blocks, so component
+      # script errors (undeclared identifiers, changed function arity) slip past
+      # the step above. This gate catches them — see PAN-104 defects D1/D2.
+      - name: Typecheck Astro components
+        run: npx astro check
+
       - name: Build web portal
         run: bun run build
 

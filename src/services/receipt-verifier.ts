@@ -1,14 +1,14 @@
 /**
  * 321 Clementi Smart Parking Barcode Redemption Engine
- * AI Receipt Verification Service (PAN-84 / TSK-06)
+ * AI Receipt Verification Service (PAN-84 / TSK-06, updated PAN-104)
  *
  * Uses Gemini 1.5 Flash Vision (pluggable interface) to OCR and validate
- * receipt images before a voucher is allocated. Enforces:
- *   1. is_receipt === true && is_legible === true
- *   2. total_amount >= 30.00 SGD
- *   3. receipt_date === today (SGT Asia/Singapore)
- *   4. tenant_name fuzzy-matches selected shop name (similarity >= 0.70)
- *   5. confidence_score >= 0.75
+ * receipt images before a voucher is allocated. Enforces 4 LLM rules:
+ *   1. Duplication/fake/blur: is_receipt === true && is_legible === true
+ *   2. Total spend >= $30.00 on a single receipt
+ *   3. Receipt date must be current date (SGT)
+ *   4. Location keyword match: at least one of "321 Clementi", "Ave 3", "129905"
+ *   + confidence_score >= 0.75
  *
  * Environment variable required: GEMINI_API_KEY
  * Optional n8n fallback: N8N_RECEIPT_VERIFIER_URL (overrides Gemini call)
@@ -29,6 +29,8 @@ export interface ReceiptExtractionResult {
   receipt_time: string | null;
   /** Invoice / receipt / bill number. Null if unreadable. */
   receipt_number: string | null;
+  /** PAN-104: True if receipt contains at least one location keyword ("321 Clementi", "Ave 3", "129905"). */
+  location_verified: boolean;
   /** Overall confidence score 0.0 – 1.0 */
   confidence_score: number;
   /** Human-readable rejection reason if invalid. */
@@ -55,38 +57,6 @@ function getTodaySGT(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: simple token-based fuzzy match (Jaccard on trigrams)
-// ---------------------------------------------------------------------------
-function computeSimilarity(a: string, b: string): number {
-  const trigramSet = (s: string): Set<string> => {
-    const normalized = s.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
-    const trigrams = new Set<string>();
-    for (let i = 0; i < normalized.length - 2; i++) {
-      trigrams.add(normalized.slice(i, i + 3));
-    }
-    // Include unigrams and bigrams for very short strings
-    for (let i = 0; i < normalized.length - 1; i++) {
-      trigrams.add(normalized.slice(i, i + 2));
-    }
-    for (let i = 0; i < normalized.length; i++) {
-      trigrams.add(normalized[i]);
-    }
-    return trigrams;
-  };
-
-  const setA = trigramSet(a);
-  const setB = trigramSet(b);
-  if (setA.size === 0 && setB.size === 0) return 1.0;
-  if (setA.size === 0 || setB.size === 0) return 0.0;
-
-  let intersection = 0;
-  for (const token of setA) {
-    if (setB.has(token)) intersection++;
-  }
-  return intersection / (setA.size + setB.size - intersection);
-}
-
-// ---------------------------------------------------------------------------
 // Internal: extract structured JSON from Gemini 1.5 Flash Vision
 // ---------------------------------------------------------------------------
 async function callGeminiVision(
@@ -94,7 +64,7 @@ async function callGeminiVision(
   mimeType: string,
   apiKey: string
 ): Promise<ReceiptExtractionResult> {
-  const prompt = `You are a receipt OCR validator for a Singapore mall parking redemption system.
+  const prompt = `You are a receipt OCR validator for a Singapore mall parking redemption system at 321 Clementi.
 Analyse the provided image and extract structured data.
 Respond ONLY with valid JSON matching this exact schema (no markdown, no explanation):
 {
@@ -105,6 +75,7 @@ Respond ONLY with valid JSON matching this exact schema (no markdown, no explana
   "receipt_date": "YYYY-MM-DD" | null,
   "receipt_time": "HH:MM:SS" | null,
   "receipt_number": string | null,
+  "location_verified": boolean,
   "confidence_score": number,
   "rejection_reason": string | null
 }
@@ -114,6 +85,7 @@ Rules:
 - is_legible: true only if key fields (total, date, store name) are clearly readable.
 - total_amount: Singapore dollar grand total. Extract numeric value only.
 - receipt_date: date printed on receipt in YYYY-MM-DD format. null if unclear.
+- location_verified: true ONLY IF at least one of these exact terms appears anywhere on the receipt: "321 Clementi", "Ave 3", or "129905". Otherwise false.
 - confidence_score: your confidence in the extraction accuracy, 0.0 to 1.0.
 - rejection_reason: brief reason if is_receipt or is_legible is false, else null.`;
 
@@ -235,8 +207,7 @@ export async function buildReceiptFingerprintHash(
 // ---------------------------------------------------------------------------
 export async function verifyReceipt(
   imageBuffer: Uint8Array,
-  mimeType: string,
-  selectedShopName: string
+  mimeType: string
 ): Promise<ReceiptVerificationResult> {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   const n8nUrl = process.env.N8N_RECEIPT_VERIFIER_URL;
@@ -344,18 +315,16 @@ export async function verifyReceipt(
     };
   }
 
-  // --- Gate 5: Tenant/shop name fuzzy match (>= 0.70 Jaccard similarity) ---
-  if (extraction.tenant_name !== null) {
-    const similarity = computeSimilarity(extraction.tenant_name, selectedShopName);
-    if (similarity < 0.70) {
-      return {
-        valid: false,
-        http_status: 400,
-        error_code: 'STORE_MISMATCH',
-        message: `Receipt appears to be from "${extraction.tenant_name}", not the selected store. Please select the correct store.`,
-        extraction,
-      };
-    }
+  // --- Gate 5: Location keyword verification (PAN-104) ---
+  // Must contain at least one of: "321 Clementi", "Ave 3", "129905"
+  if (!extraction.location_verified) {
+    return {
+      valid: false,
+      http_status: 400,
+      error_code: 'LOCATION_NOT_VERIFIED',
+      message: 'Receipt does not appear to be from 321 Clementi. Please ensure the receipt shows "321 Clementi", "Ave 3", or "129905".',
+      extraction,
+    };
   }
 
   return { valid: true, extraction };

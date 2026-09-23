@@ -184,6 +184,32 @@ RETURNING id;
 // Claim History Queries
 // ============================================================================
 
+/** Get redemption history for a receipt number (PAN-104: receipt-based lookup). */
+export const GET_RECEIPT_HISTORY_QUERY = `
+SELECT 
+    rl.id,
+    rl.voucher_code,
+    rl.receipt_amount,
+    rl.receipt_date,
+    rl.receipt_number,
+    rl.status,
+    rl.unclaimed_at,
+    rl.claim_token_hash,
+    rl.created_at,
+    COALESCE(s.name, rl.tenant_name) AS shop_name,
+    vp.barcode_format,
+    (rl.status = 'CLAIMED' AND rl.created_at >= NOW() - INTERVAL '2 hours') AS can_unclaim,
+    (rl.status = 'CLAIMED') AS can_resume,
+    rl.created_at + INTERVAL '2 hours' AS expires_at
+FROM redemption_logs rl
+LEFT JOIN shops s ON rl.shop_id = s.id
+LEFT JOIN voucher_pool vp ON rl.voucher_code = vp.voucher_code
+WHERE rl.receipt_number IS NOT NULL
+  AND UPPER(TRIM(rl.receipt_number)) = UPPER(TRIM($1))
+ORDER BY rl.created_at DESC
+LIMIT 50;
+`;
+
 /** Get redemption history for a vehicle plate (PAN-84: space-invariant lookup). */
 export const GET_PLATE_HISTORY_QUERY = `
 SELECT 
@@ -215,7 +241,7 @@ LIMIT 50;
 
 /** Get a single redemption log for unclaim verification. */
 export const GET_REDEMPTION_FOR_UNCLAIM = `
-SELECT id, voucher_code, vehicle_plate, receipt_amount, shop_id, 
+SELECT id, voucher_code, vehicle_plate, receipt_amount, receipt_number, shop_id, 
        status, claim_token_hash, created_at
 FROM redemption_logs
 WHERE id = $1::uuid

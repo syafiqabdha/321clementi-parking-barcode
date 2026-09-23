@@ -41,14 +41,14 @@
     <div class="p-4 sm:p-6 overflow-y-auto space-y-4">
       <!-- Search Input Section -->
       <div class="space-y-1.5">
-        <label for="history-plate-input" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
-          Enter Car Plate Number
+        <label for="history-receipt-input" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
+          Enter Receipt Number
         </label>
         <div class="flex gap-2">
           <input
             type="text"
-            id="history-plate-input"
-            placeholder="e.g. SBA1234A or JQR1234"
+            id="history-receipt-input"
+            placeholder="e.g. RCPT-1234567 or receipt number"
             class="flex-1 rounded-xl border-2 border-clementi-border bg-clementi-subtle px-3.5 py-2.5 text-sm font-display font-bold tracking-wider uppercase text-clementi-charcoal focus:border-clementi-crimson focus:outline-none"
             autocomplete="off"
             autocapitalize="characters"
@@ -86,7 +86,7 @@
         </div>
         <div class="font-display font-bold text-sm text-clementi-charcoal">No Redemptions Found</div>
         <p class="text-xs text-clementi-slate max-w-xs mx-auto">
-          No parking voucher claims were found for this vehicle plate today.
+          No parking voucher claims were found for this receipt number today.
         </p>
       </div>
 
@@ -153,11 +153,11 @@
 </div>
 
 <script>
-  // Auto-strip whitespace from history plate input on input event
-  const historyPlateInputEl = document.getElementById('history-plate-input') as HTMLInputElement | null;
-  historyPlateInputEl?.addEventListener('input', () => {
-    const pos = historyPlateInputEl.selectionStart ?? historyPlateInputEl.value.length;
-    historyPlateInputEl.value = historyPlateInputEl.value.replace(/\s+/g, '').toUpperCase();
-    historyPlateInputEl.setSelectionRange(pos, pos);
+  // Auto-strip whitespace from history receipt input on input event
+  const historyReceiptInputEl = document.getElementById('history-receipt-input') as HTMLInputElement | null;
+  historyReceiptInputEl?.addEventListener('input', () => {
+    const pos = historyReceiptInputEl.selectionStart ?? historyReceiptInputEl.value.length;
+    historyReceiptInputEl.value = historyReceiptInputEl.value.replace(/\s+/g, '');
+    historyReceiptInputEl.setSelectionRange(pos, pos);
   });
 </script>

@@ -1,8 +1,8 @@
 ---
 // Mobile-first card container optimized for basement mall lighting.
 // High contrast (WCAG AAA for text), clear touch targets, and resilient visibility.
-// Implements client-side HTML5 canvas downsampling, plain-text plate normalization (ADR-001),
-// shop directory select from API, click-to-enlarge barcode modal, and claim history & recovery state machine.
+// Implements client-side HTML5 canvas downsampling, shop directory select from API,
+// click-to-enlarge barcode modal, and claim history & recovery state machine.
 import BarcodeModal from './BarcodeModal.astro';
 import ClaimHistoryModal from './ClaimHistoryModal.astro';
 ---
@@ -35,7 +35,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         Claim Parking Voucher
       </h2>
       <p class="text-xs sm:text-sm text-clementi-slate mt-1 font-body leading-relaxed">
-        Enter your vehicle plate number, select your store, and snap your same-day qualifying receipt to receive an instant 2-hour free parking voucher barcode to scan at the exit gantry.
+        Select your store and snap your same-day qualifying receipt to receive an instant 2-hour free parking voucher barcode to scan at the exit gantry.
       </p>
     </div>
 
@@ -51,40 +51,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
     <!-- Intake Form -->
     <form id="redemption-form" class="space-y-4" onsubmit="return false;">
-      <!-- Step 1: Vehicle Plate Number (Plain-Text Input per ADR-001) -->
-      <div class="space-y-1.5">
-        <label for="vehicle-plate" class="block text-xs font-bold uppercase tracking-wider text-clementi-charcoal font-display">
-          Vehicle Registration Number <span class="text-clementi-crimson" aria-hidden="true">*</span>
-        </label>
-        <div class="relative flex rounded-xl shadow-xs overflow-hidden">
-          <span class="inline-flex items-center px-3.5 bg-slate-100 border-2 border-r-0 border-clementi-border text-clementi-slate font-display font-bold text-xs sm:text-sm tracking-wider select-none">
-            <span class="material-symbols-outlined text-lg">directions_car</span>
-          </span>
-          <input
-            type="text"
-            id="vehicle-plate"
-            name="vehiclePlate"
-            placeholder="e.g. SBA1234A, JQR1234, CD1234"
-            maxlength="16"
-            autocomplete="off"
-            autocapitalize="characters"
-            spellcheck="false"
-            class="block w-full rounded-none rounded-r-xl border-2 border-clementi-border bg-clementi-subtle px-3.5 py-3 text-base font-display font-bold tracking-widest uppercase text-clementi-charcoal placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal focus:border-clementi-crimson focus:ring-1 focus:ring-clementi-pink focus:outline-none transition-colors"
-            required
-            aria-describedby="plate-feedback"
-          />
-        </div>
-        <div id="plate-feedback" class="text-[11px] text-clementi-slate mt-1.5 flex items-center justify-between transition-colors px-0.5">
-          <div class="flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-sm text-clementi-slate/80 flex-shrink-0">info</span>
-            <span id="plate-feedback-text">Accepts Singapore, Malaysian & non-standard vehicle plates.</span>
-          </div>
-          <span id="plate-valid-tag" class="hidden text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
-            Plate Ready
-          </span>
-        </div>
-      </div>
-
       <!-- Step 2: Shop Selection (Required Dropdown per PAN-75 / ADR-001) -->
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">
@@ -282,21 +248,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       <span>VOUCHER ISSUED • 2 HOURS COMPLIMENTARY</span>
     </div>
 
-    <!-- Registered Vehicle Plate Section (Dark Tactile Plate) -->
-    <div>
-      <div class="text-[11px] font-semibold tracking-widest text-clementi-slate uppercase font-display mb-1.5">
-        REGISTERED VEHICLE
-      </div>
-      <div class="inline-flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-lg border border-slate-700 shadow-inner">
-        <span class="bg-clementi-crimson text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider">
-          PLATE
-        </span>
-        <span id="result-plate-display" class="font-mono font-black text-xl tracking-widest select-all">
-          SBA 1234 A
-        </span>
-      </div>
-    </div>
-
     <!-- Tactile Perforation Divider with Circular Cutout Notches -->
     <div class="relative my-4 -mx-5 sm:-mx-6" aria-hidden="true">
       <div class="absolute -left-3.5 -top-3 w-6 h-6 bg-clementi-subtle rounded-full border-r border-clementi-border shadow-inner"></div>
@@ -399,7 +350,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
 <script>
   import JsBarcode from 'jsbarcode';
-  import { fetchEligibleShops, FALLBACK_ELIGIBLE_SHOPS } from './shops-data';
+  import { fetchEligibleShops } from './shops-data';
   import type { ShopItem, ClaimHistoryRecord } from '../types';
 
   // Constants & Config
@@ -411,9 +362,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const formSection = document.getElementById('redemption-form-section') as HTMLElement;
   const closedSection = document.getElementById('redemption-closed-section') as HTMLElement;
   const barcodeSection = document.getElementById('barcode-result-section') as HTMLElement;
-  const plateInput = document.getElementById('vehicle-plate') as HTMLInputElement;
-  const plateFeedbackText = document.getElementById('plate-feedback-text') as HTMLElement;
-  const plateValidTag = document.getElementById('plate-valid-tag') as HTMLElement;
   const shopSelect = document.getElementById('shop-select') as HTMLSelectElement;
   const shopCountLabel = document.getElementById('shop-count-label') as HTMLElement;
   const dropzone = document.getElementById('receipt-dropzone') as HTMLElement;
@@ -431,30 +379,27 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const submitArrow = document.getElementById('submit-btn-arrow') as HTMLElement;
   const errorBanner = document.getElementById('error-banner') as HTMLElement;
   const errorMessage = document.getElementById('error-banner-message') as HTMLElement;
-  const barcodeSvg = document.getElementById('barcode-svg') as SVGSVGElement;
+  const barcodeSvg = document.getElementById('barcode-svg') as unknown as SVGSVGElement;
   const barcodeCodeText = document.getElementById('barcode-code-text') as HTMLElement;
-  const resultPlateDisplay = document.getElementById('result-plate-display') as HTMLElement;
   const downloadBarcodeBtn = document.getElementById('download-barcode-btn') as HTMLButtonElement;
   const downloadCanvas = document.getElementById('barcode-download-canvas') as HTMLCanvasElement;
   const resetBtn = document.getElementById('reset-redemption-btn') as HTMLButtonElement;
   const passUnclaimBtn = document.getElementById('pass-unclaim-btn') as HTMLButtonElement;
   const barcodeBoxTrigger = document.getElementById('barcode-box-trigger') as HTMLElement;
-  const closedOverrideBtn = document.getElementById('closed-mode-override-btn') as HTMLButtonElement;
   const openHistoryShortcutBtn = document.getElementById('open-history-shortcut-btn') as HTMLButtonElement;
 
   // DOM Elements - Enlarge Modal
   const enlargeModal = document.getElementById('barcode-enlarge-modal') as HTMLElement;
   const closeEnlargeModalBtn = document.getElementById('close-enlarge-modal-btn') as HTMLButtonElement;
   const dismissEnlargeBtn = document.getElementById('dismiss-enlarge-btn') as HTMLButtonElement;
-  const enlargeBarcodeSvg = document.getElementById('enlarge-barcode-svg') as SVGSVGElement;
+  const enlargeBarcodeSvg = document.getElementById('enlarge-barcode-svg') as unknown as SVGSVGElement;
   const enlargeBarcodeText = document.getElementById('enlarge-barcode-text') as HTMLElement;
-  const enlargeModalPlate = document.getElementById('enlarge-modal-plate') as HTMLElement;
   const wakeLockBadge = document.getElementById('enlarge-wake-lock-badge') as HTMLElement;
 
   // DOM Elements - Claim History Drawer
   const historyModal = document.getElementById('claim-history-modal') as HTMLElement;
   const closeHistoryDrawerBtn = document.getElementById('close-history-drawer-btn') as HTMLButtonElement;
-  const historyPlateInput = document.getElementById('history-plate-input') as HTMLInputElement;
+  const historyReceiptInput = document.getElementById('history-receipt-input') as HTMLInputElement;
   const historySearchBtn = document.getElementById('history-search-btn') as HTMLButtonElement;
   const historyAlertBanner = document.getElementById('history-alert-banner') as HTMLElement;
   const historyAlertText = document.getElementById('history-alert-text') as HTMLElement;
@@ -472,7 +417,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   let downsampledBlob: Blob | null = null;
   let currentPreviewUrl: string | null = null;
   let currentVoucherCode: string = '';
-  let currentPlate: string = '';
+  let currentReceiptNumber: string = '';
   let currentRedemptionId: string = '';
   let pendingUnclaimRecord: ClaimHistoryRecord | null = null;
   let wakeLockSentinel: WakeLockSentinel | null = null;
@@ -521,30 +466,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   initShops();
 
-  // ============================================================================
-  // 1. PLAIN-TEXT CAR PLATE INPUT (ADR-001)
-  // Accepts arbitrary plain text. Removes MOD-19 checksum blocking.
-  // ============================================================================
-  plateInput?.addEventListener('input', () => {
-    const rawVal = plateInput.value.replace(/\s+/g, '').toUpperCase();
-    plateInput.value = rawVal;
-    hideError();
-
-    const trimmed = rawVal.trim();
-    if (trimmed.length > 0) {
-      plateInput.classList.remove('border-red-500', 'border-clementi-border');
-      plateInput.classList.add('border-green-500');
-      plateFeedbackText.textContent = 'Vehicle plate ready for claim submission.';
-      plateValidTag?.classList.remove('hidden');
-    } else {
-      plateInput.classList.remove('border-green-500', 'border-red-500');
-      plateInput.classList.add('border-clementi-border');
-      plateFeedbackText.textContent = 'Accepts Singapore, Malaysian & non-standard vehicle plates.';
-      plateValidTag?.classList.add('hidden');
-    }
-  });
-
-  // ============================================================================
+    // ============================================================================
   // 2. IMAGE DOWNSAMPLING
   // ============================================================================
   async function downsampleImage(file: File): Promise<Blob> {
@@ -638,13 +560,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   // 3. SUBMIT CLAIM FORM
   // ============================================================================
   submitBtn?.addEventListener('click', async () => {
-    const rawPlate = plateInput.value.trim().toUpperCase();
-    if (!rawPlate) {
-      showError('Please enter your vehicle registration number.');
-      plateInput.focus();
-      return;
-    }
-
     const selectedShopId = shopSelect.value;
     if (!selectedShopId) {
       showError('Please select the qualifying store where you made your purchase.');
@@ -664,7 +579,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     try {
       const formData = new FormData();
       formData.append('receipt', downsampledBlob, 'receipt.jpg');
-      formData.append('vehiclePlate', rawPlate);
       formData.append('shopId', selectedShopId);
       formData.append('timestamp', new Date().toISOString());
 
@@ -680,7 +594,16 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
         const resJson = await response.json();
         if (!response.ok) {
-          showError(resJson.message || resJson.error || 'Redemption failed. Please try again.');
+          const ERROR_MESSAGES: Record<string, string> = {
+            LOCATION_NOT_VERIFIED: 'Receipt location could not be verified. Please upload a receipt from 321 Clementi.',
+            MINIMUM_SPEND_NOT_MET: 'Receipt spend does not meet the minimum $30 qualifying amount.',
+            RECEIPT_EXPIRED: 'Receipt date is not today. Only same-day receipts are eligible.',
+            INVALID_RECEIPT: 'The uploaded image does not appear to be a valid receipt.',
+            DUPLICATE_RECEIPT: 'This receipt has already been used for redemption today.',
+            LOW_CONFIDENCE_IMAGE: 'Receipt image is unclear. Please retake with better lighting.',
+          };
+          const message = ERROR_MESSAGES[resJson.error as string] || resJson.message || resJson.error || 'Redemption failed. Please try again.';
+          showError(message);
           return;
         }
 
@@ -691,22 +614,22 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         // Store claim_token in localStorage for 1-click fast unclaim
         if (claimToken && redemptionId) {
           localStorage.setItem(`clementi_claim_token_${redemptionId}`, claimToken);
-          localStorage.setItem(`clementi_claim_token_plate_${rawPlate}`, claimToken);
         }
+
+        currentReceiptNumber = resJson.data?.receipt_number || resJson.receipt_number || '';
       } catch {
         // Fallback for static preview/mock environments (strict 10-digit numeric per PAN-95)
         voucherCode = String(Math.floor(1000000000 + Math.random() * 9000000000));
         redemptionId = `mock-${Date.now()}`;
         claimToken = `tk_mock_${Date.now()}`;
         localStorage.setItem(`clementi_claim_token_${redemptionId}`, claimToken);
-        localStorage.setItem(`clementi_claim_token_plate_${rawPlate}`, claimToken);
+        currentReceiptNumber = `MOCK-RCPT-${Date.now()}`;
       }
 
       currentVoucherCode = voucherCode;
-      currentPlate = rawPlate;
       currentRedemptionId = redemptionId;
 
-      renderBarcodeScreen(voucherCode, rawPlate);
+      renderBarcodeScreen(voucherCode);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Verification failed. Please try again.';
       showError(msg);
@@ -716,12 +639,11 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   });
 
   // Render Barcode Screen
-  function renderBarcodeScreen(code: string, plate: string) {
+  function renderBarcodeScreen(code: string) {
     formSection.classList.add('hidden');
     closedSection?.classList.add('hidden');
     barcodeSection.classList.remove('hidden');
 
-    resultPlateDisplay.textContent = plate;
     barcodeCodeText.textContent = code;
 
     try {
@@ -746,6 +668,12 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     barcodeSection.classList.add('hidden');
     formSection.classList.remove('hidden');
     hideError();
+  });
+
+  const closedOverrideBtn = document.getElementById('closed-mode-override-btn');
+  closedOverrideBtn?.addEventListener('click', () => {
+    closedSection?.classList.add('hidden');
+    formSection.classList.remove('hidden');
   });
 
   // Download Barcode as PNG (Canvas-to-PNG for native mobile gallery support)
@@ -817,9 +745,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     }
   }
 
-  function openEnlargeModal(code: string, plate: string) {
+  function openEnlargeModal(code: string) {
     if (!enlargeModal) return;
-    enlargeModalPlate.textContent = plate;
     enlargeBarcodeText.textContent = code;
 
     try {
@@ -854,7 +781,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   barcodeBoxTrigger?.addEventListener('click', () => {
     if (currentVoucherCode) {
-      openEnlargeModal(currentVoucherCode, currentPlate);
+      openEnlargeModal(currentVoucherCode);
     }
   });
 
@@ -875,16 +802,10 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   // ============================================================================
   // 5. CLAIM HISTORY & RECOVERY VIEW (PAN-75 Scope 3)
   // ============================================================================
-  function openHistoryDrawer(prefillPlate?: string) {
+  function openHistoryDrawer() {
     if (!historyModal) return;
     historyModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-    if (prefillPlate) {
-      historyPlateInput.value = prefillPlate;
-      searchClaimHistory(prefillPlate);
-    } else if (currentPlate && !historyPlateInput.value) {
-      historyPlateInput.value = currentPlate;
-    }
   }
 
   function closeHistoryDrawer() {
@@ -895,22 +816,22 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     pendingUnclaimRecord = null;
   }
 
-  openHistoryShortcutBtn?.addEventListener('click', () => openHistoryDrawer(plateInput.value.trim()));
+  openHistoryShortcutBtn?.addEventListener('click', () => openHistoryDrawer());
   closeHistoryDrawerBtn?.addEventListener('click', closeHistoryDrawer);
   historyModal?.addEventListener('click', (e) => {
     if (e.target === historyModal) closeHistoryDrawer();
   });
 
   historySearchBtn?.addEventListener('click', () => {
-    const queryPlate = historyPlateInput.value.trim().toUpperCase();
-    if (!queryPlate) {
-      showHistoryAlert('Please enter a car plate number to search.', 'warning');
+    const queryReceipt = historyReceiptInput.value.trim();
+    if (!queryReceipt) {
+      showHistoryAlert('Please enter a receipt number to search.', 'warning');
       return;
     }
-    searchClaimHistory(queryPlate);
+    searchClaimHistory(queryReceipt);
   });
 
-  async function searchClaimHistory(plate: string) {
+  async function searchClaimHistory(receipt: string) {
     clearHistoryAlert();
     historyLoadingSpinner.classList.remove('hidden');
     historyEmptyState.classList.add('hidden');
@@ -918,17 +839,15 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     fallbackUnclaimSection.classList.add('hidden');
 
     try {
-      const savedToken = localStorage.getItem(`clementi_claim_token_plate_${plate}`) || '';
       const headers: Record<string, string> = {};
-      if (savedToken) headers['X-Claim-Token'] = savedToken;
 
-      const response = await fetch(`/api/v1/redemptions/history?plate=${encodeURIComponent(plate)}`, {
+      const response = await fetch(`/api/v1/redemptions/history?receipt=${encodeURIComponent(receipt)}`, {
         headers,
       });
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        showHistoryAlert(errJson.message || 'Unable to retrieve history. Please verify your plate.', 'error');
+        showHistoryAlert(errJson.message || 'Unable to retrieve history. Please verify your receipt number.', 'error');
         historyLoadingSpinner.classList.add('hidden');
         return;
       }
@@ -942,11 +861,11 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         return;
       }
 
-      renderHistoryCards(records, plate);
+      renderHistoryCards(records, receipt);
     } catch {
       // Offline/preview fallback
       historyLoadingSpinner.classList.add('hidden');
-      if (currentVoucherCode && plate === currentPlate) {
+      if (currentVoucherCode) {
         renderHistoryCards([
           {
             id: currentRedemptionId || 'mock-current',
@@ -961,14 +880,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
             expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
             created_at: new Date().toISOString(),
           },
-        ], plate);
+        ], receipt);
       } else {
         historyEmptyState.classList.remove('hidden');
       }
     }
   }
 
-  function renderHistoryCards(records: ClaimHistoryRecord[], plate: string) {
+  function renderHistoryCards(records: ClaimHistoryRecord[], receipt: string) {
     historyResultsList.innerHTML = '';
 
     records.forEach((record) => {
@@ -996,7 +915,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
                     type="button"
                     class="history-view-barcode-btn flex-1 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1"
                     data-code="${record.voucher_code}"
-                    data-plate="${plate}"
                   >
                     <span class="material-symbols-outlined text-sm">fullscreen</span>
                     <span>View Barcode</span>
@@ -1012,7 +930,6 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
                     type="button"
                     class="history-unclaim-btn py-2 px-3 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-display font-bold text-xs flex items-center justify-center gap-1"
                     data-id="${record.id}"
-                    data-plate="${plate}"
                     data-code="${record.voucher_code}"
                   >
                     <span class="material-symbols-outlined text-sm">undo</span>
@@ -1058,18 +975,16 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     historyResultsList.querySelectorAll('.history-view-barcode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const code = btn.getAttribute('data-code') || '';
-        const pl = btn.getAttribute('data-plate') || '';
         closeHistoryDrawer();
-        openEnlargeModal(code, pl);
+        openEnlargeModal(code);
       });
     });
 
     historyResultsList.querySelectorAll('.history-unclaim-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id') || '';
-        const pl = btn.getAttribute('data-plate') || '';
         const found = records.find((r) => r.id === id);
-        if (found) initiateUnclaim(found, pl);
+        if (found) initiateUnclaim(found, receipt);
       });
     });
   }
@@ -1077,14 +992,13 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   // ============================================================================
   // 6. UNCLAIM ACTION WORKFLOW (Fast-Path & Fallback Verification)
   // ============================================================================
-  async function initiateUnclaim(record: ClaimHistoryRecord, plate: string) {
-    const savedToken = localStorage.getItem(`clementi_claim_token_${record.id}`) ||
-                       localStorage.getItem(`clementi_claim_token_plate_${plate}`);
+  async function initiateUnclaim(record: ClaimHistoryRecord, receipt: string) {
+    const savedToken = localStorage.getItem(`clementi_claim_token_${record.id}`);
 
     if (savedToken) {
       // 1-Click Fast Path via localStorage Token
       if (confirm(`Unclaim voucher ${record.voucher_code} and release your daily parking quota?`)) {
-        await executeUnclaim(record.id, plate, { token: savedToken });
+        await executeUnclaim(record.id, receipt, { token: savedToken });
       }
     } else {
       // Secondary Verification Fallback (Lost session / new browser)
@@ -1113,7 +1027,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       return;
     }
 
-    await executeUnclaim(pendingUnclaimRecord.id, historyPlateInput.value.trim(), {
+    await executeUnclaim(pendingUnclaimRecord.id, historyReceiptInput.value.trim(), {
       receiptAmount: spendVal,
       shopId: shopVal,
     });
@@ -1121,7 +1035,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   async function executeUnclaim(
     redemptionId: string,
-    plate: string,
+    receipt: string,
     auth: { token?: string; receiptAmount?: number; shopId?: string }
   ) {
     try {
@@ -1132,7 +1046,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
       const body: Record<string, unknown> = {
         id: redemptionId,
-        vehicle_plate: plate,
+        receipt_number: currentReceiptNumber || receipt,
       };
       if (auth.receiptAmount) body.receipt_amount = auth.receiptAmount;
       if (auth.shopId) body.shop_id = auth.shopId;
@@ -1155,10 +1069,9 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
       // Clean up localStorage
       localStorage.removeItem(`clementi_claim_token_${redemptionId}`);
-      localStorage.removeItem(`clementi_claim_token_plate_${plate}`);
 
       // Refresh history list
-      searchClaimHistory(plate);
+      searchClaimHistory(receipt);
 
       // If active ticket pass matches, reset to form
       if (currentRedemptionId === redemptionId) {
@@ -1170,7 +1083,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       showHistoryAlert('Voucher successfully unclaimed. Daily quota released.', 'success');
       fallbackUnclaimSection.classList.add('hidden');
       pendingUnclaimRecord = null;
-      searchClaimHistory(plate);
+      searchClaimHistory(receipt);
       if (currentRedemptionId === redemptionId) {
         barcodeSection.classList.add('hidden');
         formSection.classList.remove('hidden');
@@ -1180,8 +1093,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
   // Active pass unclaim trigger
   passUnclaimBtn?.addEventListener('click', () => {
-    if (currentPlate) {
-      openHistoryDrawer(currentPlate);
+    if (currentVoucherCode) {
+      openHistoryDrawer();
     }
   });
 
@@ -1196,8 +1109,8 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   });
 
   // Global listener from BottomNav or Header
-  window.addEventListener('clementi:open-history', ((e: CustomEvent) => {
-    openHistoryDrawer(e.detail?.plate);
+  window.addEventListener('clementi:open-history', (() => {
+    openHistoryDrawer();
   }) as EventListener);
 
   function setLoading(loading: boolean) {
