@@ -4,7 +4,8 @@
  * Body: { id: string } plus optional recovery fields.
  * Supports:
  *   - Fast path: X-Claim-Token header (client has localStorage token)
- *   - Recovery path: body { id, vehicle_plate, receipt_amount, shop_id, reason }
+ *   - Recovery path: body { id, receipt_number, receipt_amount, shop_id, reason }
+ * PAN-104: Vehicle plate removed as primary key; recovery uses receipt_number.
  */
 
 import type { APIRoute } from 'astro';
@@ -13,7 +14,6 @@ import {
   ATOMIC_UNCLAIM_CTE,
   GET_REDEMPTION_FOR_UNCLAIM,
 } from '../../../../db/queries';
-import { normalizeCarPlate, PlateValidationError } from '../../../../utils/plate-normalization';
 import { verifyClaimToken } from '../../../../utils/crypto';
 import {
   checkUnclaimRateLimit,
@@ -73,11 +73,11 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Rate limiting
-    const rateCheck = checkUnclaimRateLimit(redemption.vehicle_plate);
+    // Rate limiting (PAN-104: keyed on redemption_id since plate is no longer required)
+    const rateCheck = checkUnclaimRateLimit(redemptionId);
     if (!rateCheck.allowed) {
       return new Response(
-        JSON.stringify({ success: false, error: 'UNCLAIM_LIMIT_EXCEEDED', message: 'Maximum daily unclaim attempts reached for this vehicle.' }),
+        JSON.stringify({ success: false, error: 'UNCLAIM_LIMIT_EXCEEDED', message: 'Maximum unclaim attempts reached for this redemption.' }),
         { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(Math.ceil((rateCheck.retryAfterMs || 3600) / 1000)) } }
       );
     }
@@ -99,10 +99,10 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (!authorized) {
-      // Fallback: secondary verification with receipt amount + shop
+      // Fallback: secondary verification with receipt_number + receipt amount + shop
       recoveryType = 'fallback';
 
-      const vehiclePlate = body.vehicle_plate;
+      const receiptNumberInput = body.receipt_number;
       const receiptAmount = body.receipt_amount;
       const shopIdInput = body.shop_id;
 
@@ -121,16 +121,10 @@ export const POST: APIRoute = async ({ request }) => {
         }
       }
 
-      // Normalize plate
-      let canonicalInput = '';
-      try {
-        canonicalInput = vehiclePlate ? normalizeCarPlate(vehiclePlate) : '';
-      } catch {
-        // Invalid plate format
-      }
-
       if (
-        canonicalInput === redemption.vehicle_plate &&
+        receiptNumberInput &&
+        typeof receiptNumberInput === 'string' &&
+        receiptNumberInput.trim().toUpperCase() === (redemption.receipt_number ?? '').toUpperCase() &&
         receiptAmount !== undefined &&
         Math.abs(Number(receiptAmount) - Number(redemption.receipt_amount)) < 0.01 &&
         resolvedShopId === redemption.shop_id
@@ -139,15 +133,6 @@ export const POST: APIRoute = async ({ request }) => {
       }
 
       if (!authorized) {
-        // Log failed audit
-        try {
-          await sql.unsafe(
-            `INSERT INTO redemption_audit_logs (redemption_id, action, vehicle_plate, voucher_code, ip_address, user_agent, success, failure_reason, metadata)
-             VALUES ($1::uuid, 'UNCLAIM', $2, $3, $4::inet, $5, FALSE, 'CREDENTIAL_MISMATCH', $6::jsonb)`,
-            [redemptionId, redemption.vehicle_plate, redemption.voucher_code, ip, ua, JSON.stringify({ recovery_type: recoveryType })]
-          );
-        } catch { /* best effort */ }
-
         return new Response(
           JSON.stringify({ success: false, error: 'UNAUTHORIZED', message: 'Details do not match redemption record.' }),
           { status: 401, headers: { 'Content-Type': 'application/json' } }

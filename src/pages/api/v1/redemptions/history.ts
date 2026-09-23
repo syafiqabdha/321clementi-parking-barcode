@@ -1,13 +1,13 @@
 /**
  * GET /api/v1/redemptions/history
- * Retrieve claim history for a vehicle plate.
- * Query: ?plate=SBA1234A
+ * Retrieve claim history by vehicle plate or receipt number.
+ * Query: ?plate=SBA1234A OR ?receipt=123456
  * Header: X-Claim-Token (optional)
  */
 
 import type { APIRoute } from 'astro';
 import { getDb } from '../../../../db/connection';
-import { GET_PLATE_HISTORY_QUERY, INSERT_AUDIT_LOG } from '../../../../db/queries';
+import { GET_PLATE_HISTORY_QUERY, GET_RECEIPT_HISTORY_QUERY, INSERT_AUDIT_LOG } from '../../../../db/queries';
 import { normalizeCarPlate, PlateValidationError } from '../../../../utils/plate-normalization';
 import { checkHistoryRateLimit, checkPlateHistoryScanLimit, getClientIp } from '../../../../utils/rate-limiter';
 import { sha256 } from '../../../../utils/crypto';
@@ -16,29 +16,17 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     const url = new URL(request.url);
     const rawPlate = url.searchParams.get('plate');
+    const rawReceipt = url.searchParams.get('receipt');
     const claimToken = request.headers.get('X-Claim-Token') || null;
     const ip = getClientIp(request);
     const ua = request.headers.get('user-agent') || null;
 
-    // Validate plate input
-    if (!rawPlate) {
+    // Validate input: at least one of plate or receipt is required
+    if (!rawPlate && !rawReceipt) {
       return new Response(
-        JSON.stringify({ success: false, error: 'MISSING_PLATE', message: 'Vehicle plate query parameter is required.' }),
+        JSON.stringify({ success: false, error: 'MISSING_PARAMETER', message: 'Either plate or receipt query parameter is required.' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
-    }
-
-    let canonicalPlate: string;
-    try {
-      canonicalPlate = normalizeCarPlate(rawPlate);
-    } catch (err) {
-      if (err instanceof PlateValidationError) {
-        return new Response(
-          JSON.stringify({ success: false, error: err.code, message: err.message }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-      throw err;
     }
 
     // Rate limiting
@@ -50,31 +38,66 @@ export const GET: APIRoute = async ({ request }) => {
       );
     }
 
-    const scanCheck = checkPlateHistoryScanLimit(ip, canonicalPlate);
-    if (!scanCheck.allowed) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'SCAN_LIMITED', message: 'Too many distinct plate lookups. Please try again later.' }),
-        { status: 429, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     const sql = getDb();
+    let rows: any[];
+    let searchKey: string;
+    let searchType: 'plate' | 'receipt';
 
-    // Query history
-    const rows = await sql.unsafe(GET_PLATE_HISTORY_QUERY, [canonicalPlate]);
+    if (rawReceipt) {
+      // PAN-104: Receipt-based lookup
+      searchKey = rawReceipt.trim();
+      searchType = 'receipt';
+      
+      const scanCheck = checkPlateHistoryScanLimit(ip, `receipt:${searchKey}`);
+      if (!scanCheck.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'SCAN_LIMITED', message: 'Too many distinct lookups. Please try again later.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      rows = await sql.unsafe(GET_RECEIPT_HISTORY_QUERY, [searchKey]);
+    } else {
+      // Legacy: Plate-based lookup
+      let canonicalPlate: string;
+      try {
+        canonicalPlate = normalizeCarPlate(rawPlate!);
+      } catch (err) {
+        if (err instanceof PlateValidationError) {
+          return new Response(
+            JSON.stringify({ success: false, error: err.code, message: err.message }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw err;
+      }
+
+      searchKey = canonicalPlate;
+      searchType = 'plate';
+
+      const scanCheck = checkPlateHistoryScanLimit(ip, canonicalPlate);
+      if (!scanCheck.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'SCAN_LIMITED', message: 'Too many distinct plate lookups. Please try again later.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      rows = await sql.unsafe(GET_PLATE_HISTORY_QUERY, [canonicalPlate]);
+    }
 
     // Log audit (history query)
     try {
       await sql.unsafe(INSERT_AUDIT_LOG, [
         rows.length > 0 ? rows[0].id : null,
         'HISTORY_QUERY',
-        canonicalPlate,
+        searchType === 'plate' ? searchKey : null,
         null,
         ip,
         ua,
         true,
         null,
-        JSON.stringify({ claim_token_provided: !!claimToken }),
+        JSON.stringify({ search_type: searchType, search_key: searchKey, claim_token_provided: !!claimToken }),
       ]);
     } catch {
       // Audit logging is best-effort; don't fail the request
@@ -125,7 +148,8 @@ export const GET: APIRoute = async ({ request }) => {
     return new Response(
       JSON.stringify({
         success: true,
-        vehicle_plate: canonicalPlate,
+        search_type: searchType,
+        [searchType]: searchKey,
         data,
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
