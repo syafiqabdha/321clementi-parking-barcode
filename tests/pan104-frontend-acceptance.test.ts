@@ -20,8 +20,16 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = join(import.meta.dir, '..');
 const SRC = join(ROOT, 'src');
-const DIST_INDEX = join(ROOT, 'dist', 'index.html');
-const DIST_ASTRO = join(ROOT, 'dist', '_astro');
+
+/**
+ * The client build lands in `dist/client/` once an SSR adapter is configured
+ * (@astrojs/vercel), and directly in `dist/` for a plain static build. Resolve
+ * at runtime so this suite passes under either layout.
+ */
+function resolveDistDir(): string {
+  const nested = join(ROOT, 'dist', 'client');
+  return existsSync(join(nested, 'index.html')) ? nested : join(ROOT, 'dist');
+}
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -45,15 +53,18 @@ async function viewSources(): Promise<string[]> {
 }
 
 let distHtml = '';
+let distDir = join(ROOT, 'dist');
 
 beforeAll(async () => {
-  if (!existsSync(DIST_INDEX)) {
+  distDir = resolveDistDir();
+  if (!existsSync(join(distDir, 'index.html'))) {
     const res = spawnSync('bun', ['run', 'build'], { cwd: ROOT, encoding: 'utf-8' });
     if (res.status !== 0) {
       throw new Error(`bun run build failed:\n${res.stdout}\n${res.stderr}`);
     }
+    distDir = resolveDistDir();
   }
-  distHtml = await readFile(DIST_INDEX, 'utf-8');
+  distHtml = await readFile(join(distDir, 'index.html'), 'utf-8');
 }, 180_000);
 
 // ============================================================================
@@ -204,11 +215,11 @@ describe('PAN-104 Criterion 3: single-receipt (not combined) copy', () => {
     const card = await readFile(join(SRC, 'components', 'RedemptionCard.astro'), 'utf-8');
     expect(card).toContain('LOCATION_NOT_VERIFIED');
 
-    // Astro bundles component <script> blocks into dist/_astro/*.js
-    const bundles = (await readdir(DIST_ASTRO)).filter((f) => f.endsWith('.js'));
+    // Astro bundles component <script> blocks into <dist>/_astro/*.js
+    const bundles = (await readdir(join(distDir, '_astro'))).filter((f) => f.endsWith('.js'));
     let found = false;
     for (const f of bundles) {
-      const js = await readFile(join(DIST_ASTRO, f), 'utf-8');
+      const js = await readFile(join(distDir, '_astro', f), 'utf-8');
       if (js.includes('LOCATION_NOT_VERIFIED')) found = true;
     }
     expect({ bundles: bundles.length, foundInBundle: found }).toEqual({
