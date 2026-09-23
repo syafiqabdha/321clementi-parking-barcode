@@ -68,7 +68,7 @@ Full OpenAPI 3.1 specification: [`docs/openapi.yaml`](./docs/openapi.yaml)
 
 ## Database Schema
 
-Four PostgreSQL 16 migrations under `migrations/`:
+Five PostgreSQL 16 migrations under `migrations/`:
 
 | Migration | Description |
 |-----------|-------------|
@@ -76,6 +76,7 @@ Four PostgreSQL 16 migrations under `migrations/`:
 | `0002` | `shops` table + unclaim support columns on `redemption_logs` |
 | `0003` | Receipt hash deduplication index + AI verification result columns |
 | `0004` | Enforce 10-digit numeric codes check constraint |
+| `0005` | Shift tracking from vehicle plate to receipt number |
 
 Run migrations:
 
@@ -125,7 +126,7 @@ The portal is available at `http://localhost:4321`.
 
 ## Testing
 
-297 tests across 14 test files, executed with Bun's built-in test runner:
+402 tests across 19 test files, executed with Bun's built-in test runner:
 
 ```bash
 bun test
@@ -154,32 +155,61 @@ bun test
 ## Deployment & Infrastructure
 
 ### Production Deployment (Vercel)
-The mobile web portal is deployed to Vercel as a static Astro 5 build configured via [`vercel.json`](./vercel.json).
+The portal is deployed to Vercel as an **on-demand rendered Astro 5 app** using the
+[`@astrojs/vercel`](https://docs.astro.build/en/guides/integrations-guide/vercel/) adapter
+(`output: 'server'` in [`astro.config.mjs`](./astro.config.mjs)). `vercel.json` carries the
+build/install commands, the `sin1` (Singapore) function region, and the security/caching headers.
+
+- `/api/v1/**` — five request-time handlers bundled into a single Vercel Function (`_render`), with the `postgres` npm driver talking to PostgreSQL 16.
+- `/` — prerendered to a static file and served from the CDN (`export const prerender = true` in `src/pages/index.astro`).
+- Functions are pinned to `sin1`; keep the database in Singapore (or `ap-southeast-1`) to avoid cross-region latency.
+
+Deployment is driven by Vercel's Git integration: pull requests get preview URLs, `main` deploys to production. `vercel.json` deliberately omits `outputDirectory` — the adapter writes the Build Output API v3 tree to `.vercel/output`, and declaring `dist` there makes Vercel serve the stale static build instead of the functions.
 
 #### Environment Variables
 
-Copy `.env.example` to `.env` and populate every variable before running the application. All variables are **required** unless marked optional.
+Copy `.env.example` to `.env` and populate every variable before running the application. All variables are **required** unless marked optional. On Vercel, set these under **Project → Settings → Environment Variables** for the Production (and Preview) environments.
 
 | Variable | Required | Context | Description | Example / How to Obtain |
 |---|---|---|---|---|
-| `NODE_ENV` | Optional | Backend | Node runtime environment for optimisations. | `development` or `production` |
-| `DATABASE_URL` | ✅ | Backend / Migrations | PostgreSQL 16 connection URI used by the app server and `bun run db:migrate`. | `postgresql://user:password@host:5432/clementi_redemption` |
-| `TEST_DATABASE_URL` | ✅ | CI / Local Tests | Separate PostgreSQL URI for the isolated test database (never the production DB). | `postgresql://postgres:password@localhost:55432/test_clementi` |
-| `PUBLIC_REDEMPTION_WEBHOOK_URL` | ✅ | Frontend (public) | Public HTTPS webhook endpoint exposed to the browser for the n8n receipt verification workflow. Must be an `https://` URL. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
+| `NODE_ENV` | Optional | Backend | Node runtime environment for optimisations. Set to `production` on Vercel — several gates (`verifyReceipt`, `verifyTurnstileToken`) fail closed only when this is `production`. | `production` |
+| `DATABASE_URL` | ✅ | Backend / Migrations | PostgreSQL 16 connection URI used by the app server and `bun run db:migrate`. **Must be network-reachable from Vercel** — `localhost` will not work. Use a managed endpoint or a transaction-mode pooler (Supabase `:6543`, Neon pooled, PgBouncer). | `postgresql://user:***@host:5432/clementi_redemption` |
+| `TEST_DATABASE_URL` | ✅ | CI / Local Tests | Separate PostgreSQL URI for the isolated test database (never the production DB). Not needed on Vercel. | `postgresql://postgres:***@localhost:55432/test_clementi` |
+| `PG_POOL_MAX` | Optional | Backend | Connections per function instance. Defaults to `1` on Vercel (every warm instance holds its own pool, so a larger value multiplies connections against Postgres). | `1` |
+| `PG_IDLE_TIMEOUT` | Optional | Backend | Seconds before an idle pooled connection is closed. Default `20`. | `20` |
+| `PG_CONNECT_TIMEOUT` | Optional | Backend | Seconds to wait for a new connection. Default `10`. | `10` |
+| `PG_PREPARE` | Optional | Backend | Set `true` **only** for direct/session-mode endpoints. Must stay `false` (the default) behind a transaction-mode pooler, which cannot keep prepared statements alive between queries. | `false` |
+| `PG_SSL` | Optional | Backend | Force TLS when `DATABASE_URL` carries no `sslmode=` parameter. | `true` |
+| `PG_SSL_NO_VERIFY` | Optional | Backend | Skip certificate verification — self-signed certificates only. | `false` |
+| `PUBLIC_REDEMPTION_WEBHOOK_URL` | ⚠️ Unused | Frontend (public) | Declared for the n8n receipt workflow, but **no source file reads it** — receipt verification runs server-side via `GEMINI_API_KEY` / `N8N_RECEIPT_VERIFIER_URL`. Safe to omit. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
 | `N8N_WEBHOOK_URL` | ✅ | Backend | Server-side n8n webhook URL for internal API-to-n8n calls. Usually the same as `PUBLIC_REDEMPTION_WEBHOOK_URL`; keep separate for network-internal routing. | `https://n8n.pancatz.com/webhook/clementi-redemption` |
 | `PLATE_HMAC_SECRET` | ✅ | Backend (PII) | 64-character cryptographically random hex secret used as HMAC-SHA256 pepper for vehicle plate hashing (PDPA compliance, SEC-05). Generate with: `openssl rand -hex 32` | `a0b1c2d3...` (64 hex chars) |
 | `ADMIN_API_KEY` | ✅ | Backend | Bearer token / API key for admin endpoints (`/api/v1/admin/shops`). Compared with constant-time `timingSafeEqual` (SEC-04). Generate with: `openssl rand -hex 32` | `your-secret-admin-key` |
-| `GEMINI_API_KEY` | ✅ | Backend | Google Gemini 1.5 Flash API key for AI receipt OCR verification (minimum $30 spend + date check). Obtain from [Google AI Studio](https://aistudio.google.com/app/apikey). | `AIza...` |
-| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | ✅ | Backend | Cloudflare Turnstile server-side secret key for bot protection validation. Obtain from [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com). | `0x4AAAAAAA...` |
-| `PUBLIC_TURNSTILE_SITE_KEY` | ✅ | Frontend (public) | Cloudflare Turnstile client-side site key rendered in the browser widget. Obtain from the same Turnstile site entry as `CLOUDFLARE_TURNSTILE_SECRET_KEY`. | `0x4AAAAAAA...` |
+| `GEMINI_API_KEY` | ✅ | Backend | Google Gemini 1.5 Flash API key for AI receipt OCR verification (minimum $30 spend + date check). Obtain from [Google AI Studio](https://aistudio.google.com/app/apikey). `verifyReceipt()` returns `503 VERIFIER_UNAVAILABLE` when this and `N8N_RECEIPT_VERIFIER_URL` are both unset in production. | `AIza...` |
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | ⚠️ See note | Backend | Server-side Turnstile secret for bot protection. **Leave unset until the browser widget is wired** — no widget renders `cf-turnstile-response`, so with this set every redemption is rejected `400 BOT_CHALLENGE_FAILED`. The gate is skipped entirely when the variable is absent. | `0x4AAAAAAA...` |
+| `PUBLIC_TURNSTILE_SITE_KEY` | ⚠️ Unused | Frontend (public) | Declared for the Turnstile widget, but no source file reads it. See the note on the secret key above. | `0x4AAAAAAA...` |
 | `NOCODB_URL` | ✅ | Admin / DevOps | Base URL of the NocoDB instance used by mall management staff to update the `shops` table and by `deploy-nocodb-config.sh` for health checks. Must be `https://`. | `https://nocodb.pancatz.com` |
-| `N8N_RECEIPT_VERIFIER_URL` | Optional | Backend | If set, overrides the direct Gemini API call and routes receipt verification through an n8n workflow instead. Leave blank to use the Gemini SDK directly. | `https://n8n.pancatz.com/webhook/verify-receipt` |
+| `N8N_RECEIPT_VERIFIER_URL` | Optional | Backend | If set, overrides the direct Gemini API call and routes receipt verification through an n8n workflow instead. Leave blank to use the Gemini API directly. | `https://n8n.pancatz.com/webhook/verify-receipt` |
 | `XC_TOKEN` | Optional | DevOps | NocoDB admin API token for `scripts/deploy-nocodb-config.sh` authenticated API checks. Only needed when running the deployment validation script. Obtain from NocoDB → Team & Auth → API Tokens. | `xc-token-...` |
+
+### Database Migrations
+Migrations run from a machine that can reach the production database — Vercel functions do not run them:
+
+```bash
+DATABASE_URL="postgresql://...prod..." bun run db:migrate   # apply pending
+DATABASE_URL="postgresql://...prod..." bun run db:status    # show applied / pending
+```
+
+`scripts/migrate.ts` imports Bun's SQL client, so these commands require Bun (`curl -fsSL https://bun.sh/install | bash`). They are not part of the deployed artifact.
 
 ### CI/CD Automation (GitHub Actions)
 Continuous integration is orchestrated via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) on all PRs and pushes to `main`:
 1. **Dependency Resolution**: `bun install --frozen-lockfile`
 2. **Static Typecheck**: `bun run typecheck`
-3. **Production Build**: `bun run build`
-4. **Automated Test Suite**: `bun test` (297 test cases covering plain-text plate normalization, operating hours gating, concurrency/FIFO allocation, receipt deduplication, rate limiting, and PostgreSQL 16 migrations)
+3. **Astro Component Typecheck**: `npx astro check` (catches `.astro` `<script>` block errors `tsc` misses)
+4. **Production Build**: `bun run build`
+5. **Serverless Output Gate**: asserts all five `/api/v1/**` routes resolve to the `_render` function in `.vercel/output/config.json` — this is what catches a silent regression back to build-time prerendering
+6. **Automated Test Suite**: `bun test` (402 test cases including route-level end-to-end tests against a real PostgreSQL 16 container)
+
+The workflow uses no Vercel secrets: production deploys come from Vercel's Git integration, so CI stays a pure quality gate. To deploy from CI instead, add `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` as repository secrets and run `vercel pull --yes --environment=production && vercel build --prod && vercel deploy --prebuilt --prod`.
 

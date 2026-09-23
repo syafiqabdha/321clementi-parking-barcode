@@ -19,7 +19,7 @@ jobs:
   ci:
     name: Build & Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -44,6 +44,36 @@ jobs:
 
       - name: Build web portal
         run: bun run build
+
+      # `astro build` with the Vercel adapter emits the Build Output API v3 tree.
+      # A regression here is silent and fatal: without the adapter, or with a
+      # stray `outputDirectory` in vercel.json, Astro prerenders every API route
+      # at build time and Vercel serves a frozen build-time response instead of
+      # running the handler. Assert the routes are function-bound, not static.
+      - name: Verify API routes are serverless-bound
+        run: |
+          test -f .vercel/output/config.json
+          test -d .vercel/output/functions/_render.func
+          test -f .vercel/output/static/index.html
+          bun -e '
+            const cfg = await Bun.file(".vercel/output/config.json").json();
+            const expected = [
+              "^/api/v1/admin/shops/?$",
+              "^/api/v1/redemptions/history/?$",
+              "^/api/v1/redemptions/unclaim/?$",
+              "^/api/v1/redemptions/?$",
+              "^/api/v1/shops/?$",
+            ];
+            const dests = Object.fromEntries(
+              cfg.routes.filter((r) => r.src?.startsWith("^/api/")).map((r) => [r.src, r.dest])
+            );
+            const bad = expected.filter((k) => dests[k] !== "_render");
+            if (bad.length) {
+              console.error("API routes not bound to a serverless function:", bad);
+              process.exit(1);
+            }
+            console.log(`All ${expected.length} API routes are serverless-bound.`);
+          '
 
       - name: Pre-pull test database image
         run: docker pull postgres:16-alpine
