@@ -75,6 +75,22 @@ jobs:
             console.log(`All ${expected.length} API routes are serverless-bound.`);
           '
 
+      # `output: 'server'` also enables Astro's security.checkOrigin CSRF
+      # middleware, which derives this deployment's own origin from the
+      # x-forwarded-host header Vercel sends — but only for hostnames listed in
+      # security.allowedDomains. With an empty list Astro silently substitutes
+      # `localhost`, and every same-origin POST from a real domain is rejected
+      # with "403 Cross-site POST form submissions are forbidden".
+      - name: Verify CSRF origin allowlist is populated
+        run: |
+          MANIFEST=$(ls .vercel/output/functions/_render.func/dist/server/manifest_*.mjs)
+          if ! grep -q '"allowedDomains":\[{' "$MANIFEST"; then
+            echo "::error::security.allowedDomains resolved to an empty list — Astro will treat this deployment's own origin as localhost and reject every same-origin POST with '403 Cross-site POST form submissions are forbidden'."
+            echo "Fix security.allowedDomains in astro.config.mjs."
+            exit 1
+          fi
+          echo "allowedDomains: $(grep -o '"allowedDomains":\[[^]]*\]' "$MANIFEST")"
+
       - name: Pre-pull test database image
         run: docker pull postgres:16-alpine
 
