@@ -67,7 +67,7 @@ Sentinel conducted a rigorous pre-pilot security audit and compliance verificati
 - **Payload Size Cap**: 2 MB maximum request body enforced at reverse proxy (Coolify/Traefik). Client-side downsampler emits ~200 KB JPEGs.
 - **MIME Whitelist**: Strictly `image/jpeg`, `image/png`, `image/webp`. Disallows SVG, HTML, or executable binaries.
 - **Input Pre-Validation (Fast Gate)**:
-  - Vehicle Plate format verified via regex `^[A-Z]{3}[0-9]{1,4}[A-Z]$` and LTA MOD-19 checksum before invoking Gemini Vision. Rejects malformed requests in <5ms without incurring AI API token costs.
+  - Vehicle Plate format verified via length bounds (2 to 16 characters), whitespace stripping, and alphanumeric whitelisting before invoking Gemini Vision. Rejects malformed requests in <5ms without incurring AI API token costs.
   - Operating window gate: 12:00 PM – 3:00 PM SGT weekdays strictly enforced.
 
 #### Client-Side Image Downsampler Hardening (`src/components/RedemptionCard.astro`)
@@ -145,7 +145,7 @@ Tests:       134 passed, 0 failed (629 assertions)
 Duration:    2.36s
 
 Suite Breakdown:
- - tests/mod19.test.ts: Passed (all prefix permutations, boundary checks, malformed inputs)
+ - tests/plate-normalization.test.ts: Passed (whitespace stripping, alphanumeric validation, length boundaries)
  - tests/operating-hours-gate.test.ts: Passed (boundary times, weekend rejection, SGT timezone offsets)
  - tests/receipt-validation.test.ts: Passed (spend threshold <$30, expired receipts, unreadable OCR)
  - tests/concurrency-leakage.test.ts: Passed (50 concurrent threads, 1000 allocations, zero leakage)

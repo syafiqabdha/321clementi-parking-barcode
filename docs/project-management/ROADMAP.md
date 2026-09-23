@@ -27,7 +27,7 @@ Replace physical Customer Service counter operations with a frictionless, self-s
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Phase 2: Core Engine & Automation (n8n + PostgreSQL + NocoDB)          │
 │ • Database tables setup & NocoDB spreadsheet base integration         │
-│ • n8n Webhook workflow (12:00-15:00 gate, LTA MOD-19, Gemini Vision)   │
+│ • n8n Webhook workflow (12:00-15:00 gate, Plain-text Canonicalization, Gemini Vision)   │
 │ • Atomic FIFO voucher reservation CTE (lock-free SKIP LOCKED)          │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
@@ -60,4 +60,4 @@ Replace physical Customer Service counter operations with a frictionless, self-s
 | **Backend & Workflows** | `@Backend Developer` | n8n workflow construction, PostgreSQL DDL migrations, atomic CTE |
 | **Frontend & Mobile UX** | `@Frontend Developer` / `@Iqbal` | Astro 5 portal, client-side canvas compression, Code 128 canvas |
 | **Admin & Operations** | `@DevOps Engineer` | Docker Compose configs, NocoDB table wiring, Coolify setup |
-| **Quality & Security** | `@QA Sentinel` / `@Sentinel` | Automated test suites, MOD-19 checksum tests, pre-merge review |
+| **Quality & Security** | `@QA Sentinel` / `@Sentinel` | Automated test suites, canonicalization checks, pre-merge review |

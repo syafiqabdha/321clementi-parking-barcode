@@ -192,6 +192,7 @@ The 6 spectrum colors can be systematically mapped across mall levels and experi
 - **Buttons:** Primary interactive buttons use `--clementi-crimson` with white typography and a soft pill or 8px rounded corner (`border-radius: 8px`).
 - **Cards & Micro-interactions:** Clean white cards floating on `--color-bg-subtle`, with top-accent border strips corresponding to tenant category colors.
 - **Iconography:** Simple 2px line-weight icons matching the primary geometric typography.
+- **Barcode Assets:** Code 128 parking voucher barcodes are rendered natively on-device via Canvas and feature an offline Canvas-to-PNG saving utility allowing patrons to download their barcode directly to their device.
 
 ---
 

@@ -462,7 +462,7 @@ components:
         voucher_code:
           type: string
           example: '1234567890'
-          pattern: ^[0-9]{10}$
+          pattern: ^([0-9]{10}|•{10})$
         barcode_format:
           type: string
           example: CODE128
@@ -513,7 +513,7 @@ components:
         voucher_code:
           type: string
           example: '1234567890'
-          pattern: ^[0-9]{10}$
+          pattern: ^([0-9]{10}|•{10})$
         barcode_format:
           type: string
           example: CODE128

@@ -17,7 +17,7 @@
   - Deliverable: Point NocoDB to PostgreSQL tables, configure views for CSV batch upload and customer service dispute searches.
 - **Issue 1.3: n8n Redemption Webhook Workflow**
   - Owner: `@Backend Developer`
-  - Deliverable: n8n workflow implementing fast-fail operating hours gate (12:00–15:00 SGT weekdays), MOD-19 plate checksum, Gemini 1.5 Flash vision extraction, and atomic `SKIP LOCKED` voucher pop.
+  - Deliverable: n8n workflow implementing fast-fail operating hours gate (12:00–15:00 SGT weekdays), plain-text plate canonicalization, Gemini 1.5 Flash vision extraction, and atomic `SKIP LOCKED` voucher pop.
 
 ### Stage 2: Mobile Web Portal & Barcode Engine (Frontend)
 - **Issue 2.1: Astro 5 Mobile Portal Scaffold & Design System**
@@ -33,7 +33,7 @@
 ### Stage 3: Verification, Quality Assurance & Security Gate
 - **Issue 3.1: Automated Test Suite & Validation Harness**
   - Owner: `@QA Sentinel`
-  - Deliverable: Pytest/Playwright tests covering MOD-19 plate permutations, off-hours rejection, and receipt validation edge cases.
+  - Deliverable: Pytest/Playwright tests covering plate permutations, off-hours rejection, and receipt validation edge cases.
 - **Issue 3.2: Security Review & Concurrency Audit**
   - Owner: `@Sentinel`
   - Deliverable: Audit of HMAC-SHA256 plate hashing, SQL injection prevention, and zero voucher leakage under simulated concurrency.
