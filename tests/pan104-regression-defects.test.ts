@@ -146,3 +146,20 @@ describe('PAN-104 defect D4 (FIXED): Claim History is reachable by receipt numbe
     expect(card).not.toContain('history?plate=');
   });
 });
+
+describe('PAN-104 defect D5: fabricated voucher could render in production', () => {
+  test('the mock fallback is gated behind a development build', async () => {
+    const src = await read(CARD);
+    const idx = src.indexOf('Math.floor(1000000000');
+    expect(idx).toBeGreaterThan(-1);
+
+    // The fallback fabricates a voucher code, a claim token and a receipt number,
+    // then falls through to renderBarcodeScreen(). In a production build that
+    // renders a barcode for a redemption that never happened — the shopper cannot
+    // open the gate with it. It must be preceded by a dev-only guard and an early
+    // return, so production shows an honest error instead.
+    const preceding = src.slice(Math.max(0, idx - 900), idx);
+    expect(preceding).toContain('import.meta.env.DEV');
+    expect(preceding).toContain('return;');
+  });
+});

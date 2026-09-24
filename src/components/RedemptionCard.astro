@@ -626,7 +626,16 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
         currentReceiptNumber = resJson.data?.receipt_number || resJson.receipt_number || '';
       } catch {
-        // Fallback for static preview/mock environments (strict 10-digit numeric per PAN-95)
+        // Static-preview/mock fallback — development builds only. This used to run
+        // in production too: a transport failure or a non-JSON proxy response then
+        // rendered a fabricated barcode for a redemption that never happened. That
+        // is worse than an honest error, because the shopper cannot open the gate
+        // with the fake code and the receipt looks used.
+        if (!import.meta.env.DEV) {
+          showError('Could not reach the redemption service. Please check your connection and try again.');
+          return;
+        }
+        // Strict 10-digit numeric per PAN-95
         voucherCode = String(Math.floor(1000000000 + Math.random() * 9000000000));
         redemptionId = `mock-${Date.now()}`;
         claimToken = `tk_mock_${Date.now()}`;

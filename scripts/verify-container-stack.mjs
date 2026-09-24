@@ -295,10 +295,10 @@ const reqHeaders = {
   'x-forwarded-host': SITE_HOST,
 };
 
-function postRedemption(ip, { receiptNumber, bytes }) {
+function postRedemption(ip, { receiptNumber, bytes, formRenderedAt }) {
   const fd = new FormData();
   fd.append('shopId', SHOP_ID);
-  fd.append('form_rendered_at', String(Date.now() - 3000));
+  fd.append('form_rendered_at', String(formRenderedAt ?? Date.now() - 3000));
   fd.append('receiptImage',
     new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }), 'receipt.jpg');
   return fetch(`${base}/api/v1/redemptions`, {
@@ -357,6 +357,26 @@ check('re-presenting the same receipt number is rejected (409 DUPLICATE_RECEIPT)
 
 const remaining = psql("SELECT count(*) FROM voucher_pool WHERE status='AVAILABLE';");
 check('exactly one voucher consumed by the successful redemption', remaining === '1', remaining);
+
+// --- 7b. Timing gate (Gate 1b) behaviour ------------------------------------
+// Both probes reuse the already-redeemed receipt number, so neither can allocate a
+// voucher: reaching the dedup stage proves the request got past the timing gate,
+// and the second probe proves the gate is not inert.
+const skewed = await postRedemption('203.0.113.20',
+  { receiptNumber: RECEIPT_NUMBER, bytes: [0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9],
+    formRenderedAt: Date.now() + 60_000 });
+const skewedBody = JSON.parse((await readBody(skewed)).text || '{}');
+check('a client clock running ahead is not rejected (skew tolerance)',
+  skewed.status === 409 && skewedBody?.error === 'DUPLICATE_RECEIPT',
+  `${skewed.status} ${JSON.stringify(skewedBody)}`);
+
+const instant = await postRedemption('203.0.113.21',
+  { receiptNumber: RECEIPT_NUMBER, bytes: [0xff, 0xd8, 0xff, 0xe0, 9, 9, 9, 9],
+    formRenderedAt: Date.now() });
+const instantBody = JSON.parse((await readBody(instant)).text || '{}');
+check('an instant submission is still rejected (Gate 1b actually fires)',
+  instant.status === 400 && instantBody?.error === 'SUBMISSION_TOO_FAST',
+  `${instant.status} ${JSON.stringify(instantBody)}`);
 
 const todaySGT_db = psql('SELECT CURRENT_DATE::text;');
 console.log(`[info] db CURRENT_DATE ${todaySGT_db} / SGT date used by verifier ${todaySGT}`);

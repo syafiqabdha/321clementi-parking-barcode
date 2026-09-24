@@ -107,9 +107,11 @@ paths:
                   type: string
                   description: Epoch milliseconds at which the form was rendered,
                     sent as a string. The server parseInt()s this and rejects
-                    submissions under 1500ms. Do not send an ISO date string — it
-                    parseInt()s down to the year, which leaves the timing gate
-                    silently inert.
+                    submissions whose elapsed time is under 1500ms. A missing,
+                    non-numeric or future value skips the check rather than
+                    failing it, because client and server clocks are independent.
+                    Do not send an ISO date string — it parseInt()s down to the
+                    year, so the gate silently never fires.
                   example: '1758707400000'
                 hp_company_field:
                   type: string

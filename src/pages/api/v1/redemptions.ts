@@ -63,7 +63,12 @@ export const POST: APIRoute = async ({ request }) => {
     const formRenderedAt = formData.get('form_rendered_at');
     if (formRenderedAt && typeof formRenderedAt === 'string') {
       const renderedTs = parseInt(formRenderedAt, 10);
-      if (!isNaN(renderedTs) && Date.now() - renderedTs < MIN_FORM_SUBMIT_MS) {
+      // The timestamp comes from the client's wall clock, which is independent of
+      // the server's. A negative elapsed time means the two clocks disagree, not
+      // that a bot submitted instantly, so it is not grounds for rejection — and
+      // a client that wants to look slow can send an old timestamp regardless.
+      const elapsedMs = Date.now() - renderedTs;
+      if (!isNaN(renderedTs) && elapsedMs >= 0 && elapsedMs < MIN_FORM_SUBMIT_MS) {
         return new Response(
           JSON.stringify({ success: false, error: 'SUBMISSION_TOO_FAST', message: 'Submission rejected. Please try again.' }),
           { status: 400, headers: { 'Content-Type': 'application/json' } }
