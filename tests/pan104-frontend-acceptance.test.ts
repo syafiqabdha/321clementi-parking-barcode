@@ -203,13 +203,15 @@ describe('PAN-104 Criterion 3: single-receipt (not combined) copy', () => {
     expect(distHtml).not.toContain('id="vehicle-plate"');
   });
 
-  test('the redemption form submits receiptImage + shopId + form_rendered_at + turnstile', async () => {
+  test('the redemption form submits receiptImage + shopId + form_rendered_at, and no bot-challenge token', async () => {
     const card = await readFile(join(SRC, 'components', 'RedemptionCard.astro'), 'utf-8');
     const block = card.slice(card.indexOf('const formData = new FormData();'), card.indexOf('let voucherCode: string'));
     expect(block).toContain("formData.append('receiptImage'");
     expect(block).toContain("formData.append('shopId'");
     expect(block).toContain("formData.append('form_rendered_at'");
-    expect(block).toContain("cf-turnstile-response");
+    // The Turnstile gate was removed on this branch: the client must not send a
+    // token the server no longer reads.
+    expect(block).not.toContain('cf-turnstile-response');
     expect(block).not.toContain('vehiclePlate');
   });
 

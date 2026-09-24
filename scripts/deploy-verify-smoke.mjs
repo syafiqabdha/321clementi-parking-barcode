@@ -16,7 +16,9 @@
  *     (the suite runs under Bun, which is not the Vercel runtime).
  *  3. `POST /api/v1/redemptions` allocates a voucher end to end — the route is
  *     imported by no unit test, and it holds the most complex query.
- *  4. Production fails closed when the Turnstile secret is absent.
+ *  4. The Turnstile / bot-challenge gate is absent on this branch (removed by
+ *     direction): a production submission with no token reaches payload
+ *     validation instead of failing with BOT_CHALLENGE_FAILED.
  *
  * Requires: docker, bun, node, and a completed `bun run build`.
  * Usage: node scripts/deploy-verify-smoke.mjs   (or `bun run verify:deploy`)
@@ -209,13 +211,21 @@ const histBody = (await readBody(hist)).json;
 check('redemption is committed and retrievable by receipt number',
   hist.status === 200 && histBody?.data?.length === 1, JSON.stringify(histBody).slice(0, 200));
 
-// (4) production posture: Turnstile fails closed without the secret
+// (4) production posture: the bot-challenge gate is gone on this branch. A
+// submission carrying no Turnstile token must now reach the handler's business
+// logic instead of being rejected with BOT_CHALLENGE_FAILED — that is the
+// requested behaviour, and this is its regression guard. Assert the property
+// (past the gate, not a 403) rather than one specific error code: which
+// business error comes back depends on pipeline order, and the mock verifier
+// returns a fixed extraction, so the dedup check fires before payload
+// validation.
 process.env.NODE_ENV = 'production';
 const prod = await postRedemption({ shopId: SHOP_ID, form_rendered_at: String(Date.now() - 3000) }, '203.0.113.13');
 const { json: prodBody, text: prodText } = await readBody(prod);
 console.log('(4) production, no Turnstile token ->', prod.status, (prodText || '').slice(0, 160));
-check('production fails closed without Turnstile (both keys are mandatory)',
-  prod.status === 400 && prodBody?.error === 'BOT_CHALLENGE_FAILED', JSON.stringify(prodBody));
+const botGateGone = prod.status !== 403 && prodBody?.error !== 'BOT_CHALLENGE_FAILED';
+check('production no longer gates on a Turnstile token (request reaches business logic)',
+  botGateGone && [400, 409, 422].includes(prod.status), JSON.stringify(prodBody));
 process.env.NODE_ENV = 'development';
 
 app.close();

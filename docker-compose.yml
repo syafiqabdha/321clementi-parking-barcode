@@ -60,12 +60,10 @@ services:
 
       # --- public (browser-visible) ---------------------------------------
       PUBLIC_REDEMPTION_WEBHOOK_URL: ${PUBLIC_REDEMPTION_WEBHOOK_URL:-https://n8n.pancatz.com/webhook/clementi-redemption}
+      # Both Turnstile keys are inert on this branch — the bot-challenge gate was
+      # removed from the app, so nothing reads them. Kept so this file still
+      # matches `main`, which does enforce the gate.
       PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:-}
-
-      # --- anti-bot (Turnstile) -------------------------------------------
-      # In production the redemption endpoint FAILS CLOSED when this is empty —
-      # every submission is rejected with BOT_CHALLENGE_FAILED. Set it, or run
-      # the smoke environment with NODE_ENV=development.
       CLOUDFLARE_TURNSTILE_SECRET_KEY: ${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
 
       # --- admin UI reference ---------------------------------------------
