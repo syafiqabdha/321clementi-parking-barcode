@@ -4,6 +4,12 @@ import RedemptionBanner from '../components/RedemptionBanner.astro';
 import RedemptionCard from '../components/RedemptionCard.astro';
 import StepGuide from '../components/StepGuide.astro';
 import CarparkRates from '../components/CarparkRates.astro';
+
+// Every element on this page is static markup — all behaviour (form submit,
+// barcode render, history, unclaim) is client-side fetch against /api/v1/**.
+// Prerender it so the shopper landing page is served as a static asset instead
+// of an SSR render, while the API routes stay request-time handlers.
+export const prerender = true;
 ---
 
 <BaseLayout

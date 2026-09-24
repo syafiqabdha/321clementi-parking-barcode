@@ -1,0 +1,172 @@
+# ---------------------------------------------------------------------------
+# 321 Clementi Parking Barcode — Coolify / self-hosted production stack
+#
+#   web     Astro SSR (Bun) — the redemption portal + API
+#   db      PostgreSQL 16   — voucher_pool, redemption_logs, shops, audit logs
+#   nocodb  Admin UI        — mall management CRUD over the same database
+#
+# Deploy:
+#   cp .env.example .env && $EDITOR .env      # fill every value marked REQUIRED
+#   docker compose up -d db
+#   docker compose run --rm web bun run db:migrate     # apply 0001-0005
+#   docker compose up -d web
+#   docker compose --profile nocodb up -d nocodb       # only if NocoDB is not already running
+#
+# Full runbook, rollback and verification: docs/operations/COOLIFY_DEPLOYMENT.md
+# ---------------------------------------------------------------------------
+name: 321clementi-parking
+
+services:
+  # -------------------------------------------------------------------------
+  # Astro SSR application container (adapter: @astrojs/node standalone)
+  # -------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Baked into the build — Astro evaluates its CSRF origin allowlist at
+        # build time. Add every hostname the portal is served from, comma
+        # separated and without a scheme, e.g. "321clementi.pancatz.com".
+        ALLOWED_SITE_DOMAINS: ${ALLOWED_SITE_DOMAINS:-}
+    image: 321clementi-parking-web:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4321"
+
+      # --- database -------------------------------------------------------
+      # `db` is the compose service name — the container reaches it over the
+      # internal network. Do NOT point this at a published host port.
+      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+      # Bun SQL pool ceiling. One web replica against PG's default
+      # max_connections=100 leaves ample headroom.
+      PG_POOL_MAX: ${PG_POOL_MAX:-10}
+      PG_CONNECT_TIMEOUT: ${PG_CONNECT_TIMEOUT:-10}
+
+      # --- PII / admin ----------------------------------------------------
+      # HMAC-SHA256 pepper for vehicle-plate hashing (PDPA / SEC-05).
+      # Generate each with `openssl rand -hex 32`.
+      PLATE_HMAC_SECRET: ${PLATE_HMAC_SECRET:?PLATE_HMAC_SECRET is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+
+      # --- receipt verification (Gemini Vision) ---------------------------
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # When set, receipt verification is delegated to this n8n webhook
+      # instead of calling Gemini directly. Blank uses Gemini.
+      N8N_RECEIPT_VERIFIER_URL: ${N8N_RECEIPT_VERIFIER_URL:-}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-https://n8n.pancatz.com/webhook/clementi-redemption}
+
+      # --- public (browser-visible) ---------------------------------------
+      PUBLIC_REDEMPTION_WEBHOOK_URL: ${PUBLIC_REDEMPTION_WEBHOOK_URL:-https://n8n.pancatz.com/webhook/clementi-redemption}
+      PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:-}
+
+      # --- anti-bot (Turnstile) -------------------------------------------
+      # In production the redemption endpoint FAILS CLOSED when this is empty —
+      # every submission is rejected with BOT_CHALLENGE_FAILED. Set it, or run
+      # the smoke environment with NODE_ENV=development.
+      CLOUDFLARE_TURNSTILE_SECRET_KEY: ${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
+
+      # --- admin UI reference ---------------------------------------------
+      NOCODB_URL: ${NOCODB_URL:-http://nocodb:8080}
+
+    ports:
+      # Coolify — leave WEB_HOST_PORT unset and let the Coolify proxy own
+      # ingress via the domain assigned to this service. A published host port
+      # would bypass Traefik and the Cloudflare Tunnel.
+      # Local/CI verification — WEB_HOST_PORT=4321 docker compose up -d web
+      - "${WEB_HOST_PORT:-4321}:4321"
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4321/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+    networks: [clementi]
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL 16 (migrations 0001-0005)
+  # -------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      # Deterministic collation for voucher_code / slug ordering.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # First-boot only (empty data directory): creates the nocodb_meta
+      # database so NocoDB's ~140 nc_* metadata tables never land in the
+      # application schema. See scripts/postgres-init/10-nocodb-meta.sql.
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    # No published port — only `web` (and NocoDB, when enabled here) need to
+    # reach it. For an ad-hoc psql session use:
+    #   docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [clementi]
+
+  # -------------------------------------------------------------------------
+  # NocoDB admin UI — OPTIONAL
+  #
+  # Start this only if the host does not already run NocoDB. If
+  # nocodb.pancatz.com is already served, point that instance at this database
+  # using the connection parameters in docs/operations/COOLIFY_DEPLOYMENT.md §4.
+  #
+  #   docker compose --profile nocodb up -d nocodb
+  # -------------------------------------------------------------------------
+  nocodb:
+    image: nocodb/nocodb:latest
+    profiles: [nocodb]
+    restart: unless-stopped
+    environment:
+      # NocoDB's own metadata store, in its own database — pointed at the app
+      # database it would dump ~140 `nc_*` tables into `public` alongside
+      # shops / voucher_pool / redemption_logs.
+      NC_DB: "pg://db:5432?u=${POSTGRES_USER:?POSTGRES_USER is required}&p=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}&d=${NC_META_DB:-nocodb_meta}"
+      # REQUIRED for any non-local deployment — signs NocoDB session tokens.
+      NC_AUTH_JWT_SECRET: ${NC_AUTH_JWT_SECRET:?NC_AUTH_JWT_SECRET is required}
+      # Public URL used in invitation/password-reset links and Swagger docs.
+      NC_SITE_URL: ${NOCODB_URL:-http://localhost:8080}
+      # The application data source is on the private compose network, and
+      # NocoDB refuses private/localhost data sources without this. Scope the
+      # exposure: the source is the least-privilege `mall_operations` role
+      # created by scripts/nocodb-db-roles.sql, not POSTGRES_USER.
+      NC_ALLOW_LOCAL_EXTERNAL_DBS: "true"
+      NC_DB_POOL_MAX: "10"
+      NC_DISABLE_TELE: "true"
+      NC_DISABLE_SUPPORT_CHAT: "true"
+      # Optional: pre-provision the super admin so the first visit skips the
+      # signup prompt. Setting NC_ADMIN_EMAIL without a password aborts boot.
+      NC_ADMIN_EMAIL: ${NC_ADMIN_EMAIL:-}
+      NC_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD:-}
+    volumes:
+      - nocodb-data:/usr/app/data
+    ports:
+      - "${NOCODB_HOST_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [clementi]
+
+volumes:
+  pgdata:
+  nocodb-data:
+
+networks:
+  clementi:
+    driver: bridge

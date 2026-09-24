@@ -20,8 +20,20 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = join(import.meta.dir, '..');
 const SRC = join(ROOT, 'src');
-const DIST_INDEX = join(ROOT, 'dist', 'index.html');
-const DIST_ASTRO = join(ROOT, 'dist', '_astro');
+
+/**
+ * The client build lands in `dist/client/` once an SSR adapter is configured
+ * (@astrojs/node or @astrojs/vercel), and directly in `dist/` for a plain static
+ * build. Resolve at runtime so this suite passes under either layout — the
+ * deployment target is a build concern, not a frontend contract.
+ */
+function resolveDistDir(): string {
+  const nested = join(ROOT, 'dist', 'client');
+  return existsSync(join(nested, 'index.html')) ? nested : join(ROOT, 'dist');
+}
+
+const DIST_INDEX = join(resolveDistDir(), 'index.html');
+const DIST_ASTRO = join(resolveDistDir(), '_astro');
 
 const CURRENT_YEAR = new Date().getFullYear();
 
