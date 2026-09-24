@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+      # The `vercel` deployment branch is long-lived (Vercel deploys from it), so
+      # its pushes must be gated directly rather than only via PRs — a
+      # deployment branch with no CI on push can drift unverified.
+      - vercel
   pull_request:
     branches:
       - main
