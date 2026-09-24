@@ -1,6 +1,7 @@
 # ADR-002: AI Receipt Verification and Multi-Tier Anti-Bot Gates
 
-**Status:** Accepted
+**Status:** Accepted — **amended**: the Cloudflare Turnstile gate (item 2 of the pipeline
+below) has since been removed. See "Amendment" at the end of this document.
 
 ## Context & Problem Statement
 The parking receipt redemption system needs to autonomously verify shopper receipts to ensure a minimum purchase of $30 is met for the current day without exposing the API to abuse (e.g., bot submissions, spam, or duplicate receipt uploads). How do we seamlessly and securely validate proof-of-spend while defending against automated abuse?
@@ -38,3 +39,18 @@ The submission pipeline evaluates rapidly failing gates to protect the external 
 ## Consequences
 - **Positive**: True autonomous operation. Negligible fraud risk due to exact cryptographic hashing combined with AI semantic checks.
 - **Negative**: Increased configuration surface (Turnstile credentials, Gemini APi Key, n8n endpoints). The LLM call acts as the longest blocking operation of the API endpoint.
+
+## Amendment
+
+**Turnstile removed.** The pipeline above lists Cloudflare Turnstile as gate 2. It was
+removed because the redemption portal never rendered the Turnstile widget: the server check
+demanded a `cf-turnstile-response` token that no client could supply, so in production every
+submission failed with `BOT_CHALLENGE_FAILED` and no redemption could complete. Reintroducing
+the decision requires the client widget and the server check **together** — either one alone
+breaks the flow.
+
+Gate 1 is therefore the honeypot (`hp_company_field`) and the 1500ms timing gate
+(`form_rendered_at`, epoch milliseconds), with the per-IP rate limiter (3 per 5 minutes) as
+the next tier. Caveat, recorded honestly: the client does not render the honeypot field
+either, so gate 1a does not fire today — gate 1b does, now that the client sends epoch
+milliseconds rather than an ISO string.

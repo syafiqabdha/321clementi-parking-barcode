@@ -3,7 +3,7 @@
  * Submit receipt for voucher allocation. PAN-104: vehicle plate is now optional (removed as primary tracking key).
  *
  * PAN-84 Gate pipeline (fast-fail order):
- *   Gate 1: Bot detection — honeypot field, timing gate, Cloudflare Turnstile
+ *   Gate 1: Bot detection — honeypot field and timing gate
  *   Gate 2: IP rate limit (3 req / 5 min)
  *   Gate 3: Shop validation (plate optional)
  *   Gate 4: (removed) Daily vehicle limit — now enforced by receipt deduplication
@@ -29,7 +29,6 @@ import { sha256 } from '../../../utils/crypto';
 import {
   getClientIp,
   checkRedemptionRateLimit,
-  verifyTurnstileToken,
 } from '../../../utils/rate-limiter';
 import {
   verifyReceipt,
@@ -70,21 +69,6 @@ export const POST: APIRoute = async ({ request }) => {
           { status: 400, headers: { 'Content-Type': 'application/json' } }
         );
       }
-    }
-
-    // -----------------------------------------------------------------------
-    // Gate 1c: Cloudflare Turnstile token verification
-    // -----------------------------------------------------------------------
-    const turnstileToken = formData.get('cf-turnstile-response');
-    const turnstileResult = await verifyTurnstileToken(
-      typeof turnstileToken === 'string' ? turnstileToken : null,
-      ip
-    );
-    if (!turnstileResult.success) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'BOT_CHALLENGE_FAILED', message: 'Bot challenge verification failed. Please refresh and try again.' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
     }
 
     // -----------------------------------------------------------------------

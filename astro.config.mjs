@@ -48,7 +48,7 @@ const allowedDomains = [
 ];
 
 // The five API routes under src/pages/api/** are request-time handlers (DB
-// access, Turnstile siteverify, Gemini Vision). Without `output: 'server'` plus
+// access, Gemini Vision). Without `output: 'server'` plus
 // an adapter Astro prerenders them at build time: `astro build` emits empty
 // response bodies for `/api/v1/redemptions` and friends, and the deployment
 // then serves those frozen build-time responses instead of running the handler.

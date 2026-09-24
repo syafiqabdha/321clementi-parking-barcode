@@ -4,9 +4,9 @@
 # Used only by scripts/verify-container-stack.mjs (and the CI container job) to
 # drive a full redemption through the real container stack:
 #
-#   * NODE_ENV=development      — the production posture fails closed without a
-#                                 Cloudflare Turnstile secret, which would make
-#                                 every redemption 400 before reaching the DB.
+#   * NODE_ENV=development      — keeps the run off the production posture, so a
+#                                 production-only fail-closed guard cannot mask a
+#                                 stack failure.
 #   * N8N_RECEIPT_VERIFIER_URL  — replays a deterministic receipt extraction so
 #                                 the run needs no Gemini quota.
 #   * GEMINI_API_KEY=""         — the n8n fallback above takes precedence.

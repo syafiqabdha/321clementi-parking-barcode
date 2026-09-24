@@ -109,7 +109,7 @@ bun install
 # 2. Configure environment
 cp .env.example .env
 # Edit .env — fill in NODE_ENV, DATABASE_URL, ADMIN_API_KEY, GEMINI_API_KEY,
-# PLATE_HMAC_SECRET, Cloudflare Turnstile keys, and n8n URLs
+# PLATE_HMAC_SECRET, and n8n URLs (the Turnstile keys are no longer used)
 # See the "Environment Variables" table under Deployment for full details
 
 # 3. Apply database migrations
@@ -170,8 +170,8 @@ Copy `.env.example` to `.env` and populate every variable before running the app
 | `PLATE_HMAC_SECRET` | ✅ | Backend (PII) | 64-character cryptographically random hex secret used as HMAC-SHA256 pepper for vehicle plate hashing (PDPA compliance, SEC-05). Generate with: `openssl rand -hex 32` | `a0b1c2d3...` (64 hex chars) |
 | `ADMIN_API_KEY` | ✅ | Backend | Bearer token / API key for admin endpoints (`/api/v1/admin/shops`). Compared with constant-time `timingSafeEqual` (SEC-04). Generate with: `openssl rand -hex 32` | `your-secret-admin-key` |
 | `GEMINI_API_KEY` | ✅ | Backend | Google Gemini 1.5 Flash API key for AI receipt OCR verification (minimum $30 spend + date check). Obtain from [Google AI Studio](https://aistudio.google.com/app/apikey). | `AIza...` |
-| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | ✅ | Backend | Cloudflare Turnstile server-side secret key for bot protection validation. Obtain from [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com). | `0x4AAAAAAA...` |
-| `PUBLIC_TURNSTILE_SITE_KEY` | ✅ | Frontend (public) | Cloudflare Turnstile client-side site key rendered in the browser widget. Obtain from the same Turnstile site entry as `CLOUDFLARE_TURNSTILE_SECRET_KEY`. | `0x4AAAAAAA...` |
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | Not used | — | **Removed.** The bot-challenge gate was deleted from `POST /api/v1/redemptions`; nothing reads this variable. Kept in `.env.example` only so existing `.env` files still validate. | — |
+| `PUBLIC_TURNSTILE_SITE_KEY` | Not used | — | **Removed.** The portal no longer renders the Turnstile widget. Re-enabling the gate requires the widget and the server check to return together. | — |
 | `NOCODB_URL` | ✅ | Admin / DevOps | Base URL of the NocoDB instance used by mall management staff to update the `shops` table and by `deploy-nocodb-config.sh` for health checks. Must be `https://`. | `https://nocodb.pancatz.com` |
 | `N8N_RECEIPT_VERIFIER_URL` | Optional | Backend | If set, overrides the direct Gemini API call and routes receipt verification through an n8n workflow instead. Leave blank to use the Gemini SDK directly. | `https://n8n.pancatz.com/webhook/verify-receipt` |
 | `XC_TOKEN` | Optional | DevOps | NocoDB admin API token for `scripts/deploy-nocodb-config.sh` authenticated API checks. Only needed when running the deployment validation script. Obtain from NocoDB → Team & Auth → API Tokens. | `xc-token-...` |

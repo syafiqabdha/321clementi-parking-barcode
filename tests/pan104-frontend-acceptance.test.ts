@@ -203,12 +203,19 @@ describe('PAN-104 Criterion 3: single-receipt (not combined) copy', () => {
     expect(distHtml).not.toContain('id="vehicle-plate"');
   });
 
-  test('the redemption form submits receipt + shopId + timestamp only', async () => {
+  test('the redemption form submits receiptImage + shopId + form_rendered_at, and no bot-challenge token', async () => {
     const card = await readFile(join(SRC, 'components', 'RedemptionCard.astro'), 'utf-8');
     const block = card.slice(card.indexOf('const formData = new FormData();'), card.indexOf('let voucherCode: string'));
-    expect(block).toContain("formData.append('receipt'");
+    expect(block).toContain("formData.append('receiptImage'");
     expect(block).toContain("formData.append('shopId'");
-    expect(block).toContain("formData.append('timestamp'");
+    expect(block).toContain("formData.append('form_rendered_at'");
+    // Gate 1b parses form_rendered_at as epoch milliseconds. An ISO string is
+    // parseInt()'d down to the year, which leaves the timing gate inert.
+    expect(block).toContain("formData.append('form_rendered_at', String(FORM_RENDERED_AT))");
+    expect(card).toMatch(/const FORM_RENDERED_AT = Date\.now\(\);/);
+    // The Turnstile gate was removed: the client must not send a token the
+    // server no longer reads.
+    expect(block).not.toContain('cf-turnstile-response');
     expect(block).not.toContain('vehiclePlate');
   });
 

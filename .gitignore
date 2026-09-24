@@ -2,6 +2,7 @@
 dist/
 .astro/
 .temp/
+.vercel/
 
 # dependencies
 node_modules/

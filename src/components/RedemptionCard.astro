@@ -358,6 +358,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const MAX_IMAGE_WIDTH = 1200;
   const JPEG_QUALITY = 0.85;
 
+  // Gate 1b (timing) contract: the API parses `form_rendered_at` as epoch
+  // milliseconds and rejects anything under MIN_FORM_SUBMIT_MS (1500ms).
+  // Captured once when this module loads — i.e. when the card is rendered — not
+  // at submit time, which would always measure ~0ms and reject every
+  // submission. An ISO string is also wrong here: parseInt() would read the
+  // year and the gate would silently never fire.
+  const FORM_RENDERED_AT = Date.now();
+
   // DOM Elements - Main Form
   const formSection = document.getElementById('redemption-form-section') as HTMLElement;
   const closedSection = document.getElementById('redemption-closed-section') as HTMLElement;
@@ -578,9 +586,9 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
 
     try {
       const formData = new FormData();
-      formData.append('receipt', downsampledBlob, 'receipt.jpg');
+      formData.append('receiptImage', downsampledBlob, 'receipt.jpg');
       formData.append('shopId', selectedShopId);
-      formData.append('timestamp', new Date().toISOString());
+      formData.append('form_rendered_at', String(FORM_RENDERED_AT));
 
       let voucherCode: string = '';
       let redemptionId: string = '';

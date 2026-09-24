@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 321 Clementi Parking Barcode Engine API
-  version: 1.1.0
+  version: 1.2.0
   description: 'Autonomous receipt-to-barcode parking redemption engine for 321 Clementi
     Mall.
 
@@ -85,7 +85,6 @@ paths:
               - receiptImage
               - shopId
               - form_rendered_at
-              - cf-turnstile-response
               properties:
                 vehiclePlate:
                   type: string
@@ -106,14 +105,15 @@ paths:
                     20MB)
                 form_rendered_at:
                   type: string
-                  format: date-time
-                  example: '2026-09-17T12:30:00Z'
+                  description: Epoch milliseconds at which the form was rendered,
+                    sent as a string. The server parseInt()s this and rejects
+                    submissions under 1500ms. Do not send an ISO date string — it
+                    parseInt()s down to the year, which leaves the timing gate
+                    silently inert.
+                  example: '1758707400000'
                 hp_company_field:
                   type: string
                   description: Honeypot field for bot detection. Must be left empty.
-                cf-turnstile-response:
-                  type: string
-                  description: Cloudflare Turnstile token
       responses:
         '201':
           description: Voucher successfully allocated
