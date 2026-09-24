@@ -45,6 +45,15 @@ skip() { printf '[SKIP] %s\n' "$1"; [ -n "${2:-}" ] && printf '        -> %s\n' 
 info() { printf '[info] %s\n' "$1"; }
 warn() { printf '[warn] %s\n' "$1"; }
 
+# PostgreSQL connection URIs percent-encode reserved characters in credentials
+# ("a@b" is written "a%40b"). psql used to decode the whole URI for us; now that
+# the probes split it into components themselves, decoding has to happen here or
+# a valid password containing @ : / % would fail every check. python3 is already
+# a hard requirement of this script.
+urldecode() {
+  python3 -c 'import sys, urllib.parse; sys.stdout.write(urllib.parse.unquote(sys.argv[1]))' "$1"
+}
+
 command -v curl >/dev/null 2>&1 || { echo 'fatal: curl is required'; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo 'fatal: python3 is required'; exit 1; }
 
@@ -194,6 +203,11 @@ else
       mo_host="${__hp%:*}"
       mo_port="${__hp##*:}"
       case "$mo_port" in '' | *[!0-9]*) mo_port=5432 ;; esac
+      # Undo the URI's percent-encoding (see urldecode above).
+      mo_user="$(urldecode "$mo_user")"
+      mo_pass="$(urldecode "$mo_pass")"
+      mo_host="$(urldecode "$mo_host")"
+      mo_db="$(urldecode "$mo_db")"
 
       if [ "$PSQL_MODE" = 'native' ]; then
         out="$(PGPASSWORD="$mo_pass" psql -h "$mo_host" -p "$mo_port" -U "$mo_user" -d "$mo_db" \

@@ -76,14 +76,16 @@ docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c 'ALTER TABLE voucher_pool VALIDATE CONSTRAINT ck_voucher_pool_voucher_code_numeric_10;'
 
 # 4. Least-privilege role for the NocoDB data source
-# The password goes through stdin, never as an argv value: `psql -v mall_ops_password=…`
-# would expose it to every local user in `ps -ef` and in shell history. The first line
-# of the stream is the password, the rest is the script.
+# The password goes through stdin into the container's environment, never as an
+# argv value: `psql -v mall_ops_password=…` would expose it to every local user
+# in `ps -ef` and in shell history. The first line of the stream is the
+# password, the rest is the script; the script's \getenv reads the variable.
 { printf '%s\n' "$MALL_OPS_DB_PASSWORD"; cat scripts/nocodb-db-roles.sql; } \
   | docker compose exec -T db sh -c '
-      IFS= read -r __pw
-      psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
-        -v mall_ops_db="$POSTGRES_DB" -v mall_ops_password="$__pw" -f -'
+      IFS= read -r MALL_OPS_DB_PASSWORD
+      export MALL_OPS_DB_PASSWORD
+      exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+        -v mall_ops_db="$POSTGRES_DB" -f -'
 
 # 5. Start the application
 docker compose up -d web
@@ -196,17 +198,24 @@ bun scripts/verify-container-stack.mjs
 # NocoDB integration + least-privilege negative tests (see script header for env vars)
 #
 # The database publishes no host port, so the probes need the loopback-only mapping
-# the verification overlay adds. Run the stack through the overlay, otherwise
-# `@db:5432` resolves only inside the compose network and the host cannot reach it:
+# the verification overlay adds — the deployable stack is deliberately unreachable
+# from the host:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d db
+#   docker compose -p 321clementi-parking-verify \
+#     -f docker-compose.yml -f docker-compose.verify.yml up -d db
+#
+# Percent-encode reserved characters in the password (@ : / %) — the script decodes
+# each URI component before handing it to psql.
 NOCODB_URL=https://nocodb.pancatz.com \
 XC_TOKEN=<nocodb-api-token> \
-MALL_OPS_DATABASE_URL=postgresql://mall_operations:***@127.0.0.1:15432/$POSTGRES_DB \
+MALL_OPS_DATABASE_URL="postgresql://mall_operations:${MALL_OPS_DB_PASSWORD}@127.0.0.1:15432/${POSTGRES_DB}" \
   ./scripts/deploy-nocodb-config.sh
 #
-# The password is passed via MALL_OPS_DATABASE_URL only as an exported environment
-# variable — never as a psql argv value, which would expose it in `ps -ef`.
+# The script splits that URL itself and passes the password to psql through the
+# environment (native mode) or stdin (docker mode) — never as a psql argv value, so
+# it does not appear in `ps -ef`. The docker fallback uses `--network host` and
+# therefore needs a Linux Docker host; on Docker Desktop, run the script where psql
+# is available instead.
 
 # Application test suite (unchanged, must stay green)
 bun install --frozen-lockfile && bun run typecheck && bun test
@@ -288,6 +297,8 @@ not treat them as a routing requirement.
 
 ### 7.4 Verifying webhook routing end to end
 
+Run these against the **deployed** stack:
+
 ```bash
 # 1. n8n itself is up
 curl -s -o /dev/null -w '%{http_code}\n' https://n8n.pancatz.com/healthz
@@ -295,9 +306,21 @@ curl -s -o /dev/null -w '%{http_code}\n' https://n8n.pancatz.com/healthz
 # 2. the app container can reach the verifier URL it was configured with
 docker exec <web-container-name> wget -q -S -O /dev/null "$N8N_RECEIPT_VERIFIER_URL" 2>&1 | head -3
 
-# 3. the redemption path with a mock verifier still allocates a voucher
-bun scripts/verify-container-stack.mjs
+# 3. the deployed redemption path through the public hostname. Non-destructive: a
+#    receipt that cannot be verified is rejected before any voucher is consumed.
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://<production-hostname>/api/v1/redemptions" \
+  -H 'Content-Type: application/json' -H "Origin: https://<production-hostname>" \
+  --data '{"receiptNumber":"SMOKE-TEST","shopId":1}'
+# Expect 400/409/422 — anything but 403 (CSRF) and anything but 201.
 ```
+
+`scripts/verify-container-stack.mjs` is a **throwaway-stack** check, not a health check for the
+deployed services. It is safe to run on this host: it runs under its own compose project
+(`321clementi-parking-verify`, override with `VERIFY_PROJECT`) and its `down -v` teardown removes
+only that project's volumes, so it cannot touch the live `pgdata` / `nocodb-data`. Earlier
+revisions of this runbook recommended it here without that isolation — it shared the production
+project name and would have deleted the deployed database. It now refuses to start if
+`VERIFY_PROJECT` names the production project.
 
 ## 8. Security posture — accepted trade-offs
 
