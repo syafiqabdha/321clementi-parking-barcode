@@ -96,6 +96,10 @@ docker compose exec -T -e MALL_OPS_DB_PASSWORD db \
        -v mall_ops_db="$POSTGRES_DB" -f - < scripts/nocodb-db-roles.sql
 
 # 5. Start the application
+docker compose ps      # db must report (healthy) first — `web` declares
+                       # `depends_on: db: condition: service_healthy`, so if db is
+                       # unhealthy `up -d web` aborts with
+                       # "dependency failed to start: container … is unhealthy"
 docker compose up -d web
 docker compose ps      # web must report (healthy)
 
@@ -242,6 +246,23 @@ pool.
 
 ## 6. Known caveats
 
+- **Coolify environment variables must be filled in the resource's panel.** `docker-compose.yml`
+  deliberately uses no `${VAR:?message}` "required" syntax, because Coolify substitutes that
+  message text as the *value* when the variable is unset rather than aborting the deploy. That is
+  exactly how the first production deploy ran with `POSTGRES_USER="POSTGRES_USER is required"`,
+  which made the `db` healthcheck evaluate to
+  `pg_isready -U POSTGRES_USER is required -d …` and fail with
+  `pg_isready: error: too many command-line arguments (first is "is")` — the deployment then died
+  at `up -d` with `dependency failed to start: container … is unhealthy`. Two things now prevent a
+  repeat: the healthcheck expands `$$POSTGRES_USER` / `$$POSTGRES_DB` **inside the container** and
+  quotes them, so host-side interpolation can never break it; and an unset variable becomes a
+  default or empty value instead of the message text, which the containers reject loudly
+  (postgres will not initialise without `POSTGRES_PASSWORD`, the app throws without
+  `DATABASE_URL`, admin endpoints deny every request without `ADMIN_API_KEY`). A first boot with
+  the wrong values still poisons `pgdata`, so verify the panel *before* the first `up -d`.
+- **A `POSTGRES_PASSWORD` containing `@`, `:` or `/` breaks `DATABASE_URL`.** The URL is assembled
+  by string interpolation, so those characters must be percent-encoded. Use an alphanumeric
+  password (e.g. `openssl rand -hex 32`) or set `DATABASE_URL` explicitly.
 - **The bot-challenge gate has been removed.** `POST /api/v1/redemptions` no longer reads
   `cf-turnstile-response`, and the portal never rendered the Turnstile widget anyway — the
   server required a token no client could supply, so every production submission failed with
