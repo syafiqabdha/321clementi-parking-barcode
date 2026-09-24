@@ -47,28 +47,11 @@ const SITE_HOST = '321clementi.pancatz.com';
 const TMP = mkdtempSync(join(tmpdir(), 'pan109-verify-'));
 const ENV_FILE = join(TMP, 'verify.env');
 
-// Fixed, non-secret values — this stack is throwaway and must never talk to a
-// real database. Secrets are obviously fake so they cannot be mistaken for real
-// ones if this file ever leaks into a log.
-writeFileSync(ENV_FILE, [
-  `POSTGRES_USER=${DB_USER}`,
-  `POSTGRES_PASSWORD=${DB_PASS}`,
-  `POSTGRES_DB=${DB_NAME}`,
-  `PLATE_HMAC_SECRET=${'a'.repeat(64)}`,
-  `ADMIN_API_KEY=${'b'.repeat(64)}`,
-  `NC_AUTH_JWT_SECRET=${'c'.repeat(64)}`,
-  `ALLOWED_SITE_DOMAINS=${SITE_HOST}`,
-  `NOCODB_URL=https://nocodb.pancatz.com`,
-  `WEB_HOST_PORT=${WEB_PORT}`,
-  `IMAGE_TAG=${IMAGE_TAG}`,
-  '',
-].join('\n'));
-
 // Verification runs under its OWN compose project. The deployable file sets
 // `name: 321clementi-parking`, and this script tears the stack down with
 // `down -v` — so without a separate project it would operate on the production
-// stack and DELETE the live `pgdata` / `nocodb-data` volumes. NEVER drop the
-// `-p` below, and never point VERIFY_PROJECT at the deployed project.
+// stack and DELETE the live `pgdata` volume. NEVER drop the `-p` below, and
+// never point VERIFY_PROJECT at the deployed project.
 const PRODUCTION_PROJECT = '321clementi-parking';
 const PROJECT = process.env.VERIFY_PROJECT ?? `${PRODUCTION_PROJECT}-verify`;
 if (PROJECT === PRODUCTION_PROJECT) {
@@ -78,6 +61,27 @@ if (PROJECT === PRODUCTION_PROJECT) {
   );
   process.exit(1);
 }
+
+// Fixed, non-secret values — this stack is throwaway and must never talk to a
+// real database. Secrets are obviously fake so they cannot be mistaken for real
+// ones if this file ever leaks into a log.
+//
+// CLEMENTI_NETWORK_NAME is here because `docker-compose.yml` pins the network
+// name, and an explicit `name:` beats `-p`: without this override a verification
+// run on the production host would create — or worse, join — the production
+// network instead of an isolated one.
+writeFileSync(ENV_FILE, [
+  `POSTGRES_USER=${DB_USER}`,
+  `POSTGRES_PASSWORD=${DB_PASS}`,
+  `POSTGRES_DB=${DB_NAME}`,
+  `PLATE_HMAC_SECRET=${'a'.repeat(64)}`,
+  `ADMIN_API_KEY=${'b'.repeat(64)}`,
+  `ALLOWED_SITE_DOMAINS=${SITE_HOST}`,
+  `CLEMENTI_NETWORK_NAME=${PROJECT}_clementi`,
+  `WEB_HOST_PORT=${WEB_PORT}`,
+  `IMAGE_TAG=${IMAGE_TAG}`,
+  '',
+].join('\n'));
 
 const COMPOSE = [
   'compose',

@@ -1,7 +1,9 @@
 # Coolify Deployment Runbook — 321 Clementi Parking Barcode
 
-- **Issue:** PAN-109
+- **Issues:** PAN-109 (initial stack + Coolify deployment), PAN-110 (unified NocoDB
+  architecture — §4, §7.6)
 - **Target:** self-hosted Coolify, Docker Compose runtime, PostgreSQL 16, NocoDB admin UI
+  (one centralized instance, external to this stack — §4)
 - **Blast radius:** every command below is intended to be run **manually by the systems
   architect**. Nothing in this repository touches live Coolify infrastructure on its own.
 - **Host-specific facts for ewsvr-ubuntu — read §7 first.**
@@ -11,7 +13,7 @@
 | Path | Purpose |
 |---|---|
 | `Dockerfile` | Multi-stage Bun image. Builds the Astro SSR bundle (`@astrojs/node` standalone) and runs `dist/server/entry.mjs`. |
-| `docker-compose.yml` | `web` + `db` (PostgreSQL 16) + `nocodb` (optional profile). |
+| `docker-compose.yml` | `web` + `db` (PostgreSQL 16) only. NocoDB is **not** part of this stack: the single instance runs as a Coolify service and is bridged onto this stack's network (§4). |
 | `docker-compose.verify.yml` | Verification overlay only. **Never deploy this file.** |
 | `scripts/verify-container-stack.mjs` | Boots the real stack and drives a full receipt→barcode redemption. |
 | `scripts/nocodb-db-roles.sql` | Least-privilege `mall_operations` database role for NocoDB. |
@@ -28,23 +30,25 @@ same image is deliberate — the applied schema can never drift from the code th
    ```bash
    openssl rand -hex 32   # PLATE_HMAC_SECRET   (PDPA HMAC pepper)
    openssl rand -hex 32   # ADMIN_API_KEY       (/api/v1/admin/shops)
-   openssl rand -hex 32   # NC_AUTH_JWT_SECRET  (NocoDB session tokens)
    openssl rand -hex 24   # MALL_OPS_DB_PASSWORD (NocoDB data-source role)
    ```
+   The centralized NocoDB keeps its own secrets (`NC_AUTH_JWT_SECRET`, super-admin
+   credentials) in its Coolify service — this repository no longer carries them.
 2. **Set `ALLOWED_SITE_DOMAINS`** to every hostname the portal is served from, comma
    separated, no scheme — e.g. `321clementi.pancatz.com`. This is a **build-time** value:
    Astro evaluates its CSRF origin allowlist during `bun run build`, so changing it
    requires a rebuild. Omitting the real hostname makes every form POST fail with
    `403 Cross-site POST form submissions are forbidden`.
-3. **Publish no host port for `web` or `nocodb`.** `docker-compose.yml` deliberately has no
-   `ports:` mapping on either service: ingress is the Coolify/Traefik proxy's job via the
+3. **Publish no host port for `web` or `db`.** `docker-compose.yml` deliberately has no
+   `ports:` mapping on any service: ingress is the Coolify/Traefik proxy's job via the
    domain assigned to the service (Cloudflare Tunnel → Coolify/Traefik → `web:4321`). CI
    enforces this. A published mapping bypasses Traefik and the Tunnel, which drops the
    Cloudflare WAF and strips `cf-connecting-ip` — the header step 4 depends on. The only
    published port in this repository is in `docker-compose.verify.yml`, bound to
    `127.0.0.1` and never deployed. On `ewsvr-ubuntu` that also matters practically: `:4321`
    is already held by another process and `:8080` by `coolify-proxy`, so a published
-   mapping there would fail to start and collide.
+   mapping there would fail to start and collide — this is one reason the NocoDB UI was
+   never published from this stack either (§4).
 4. **Cloudflare Tunnel and client IPs:** `getClientIp()` prefers `cf-connecting-ip`, which
    Cloudflare sets on every proxied request, so the 3-per-5-minute rate limiter buckets
    real shoppers. Only if that header is absent does it fall back to the rightmost
@@ -61,13 +65,22 @@ same image is deliberate — the applied schema can never drift from the code th
 # 1. Build + start the database
 #
 # First, confirm the project has no pre-existing volume. `docker-compose.yml`
-# pins `name: 321clementi-parking`, so any earlier run (including a verification
-# run) that used this project name has already initialised and migrated
-# `321clementi-parking_pgdata` — production would then start on a database
-# seeded by a smoke test. Verification must use its own project name
+# pins `name: 321clementi-parking`, but Coolify deploys with its own `-p`
+# <project>, which **overrides** that field — so on a Coolify host the live
+# volume is `<coolify-project>_pgdata` (observed on ewsvr-ubuntu as
+# `k5eshqzwnefkjqc0gvbgtph3_pgdata`), not `321clementi-parking_pgdata`. Read the
+# name off the running stack instead of guessing it:
+#
+#   docker inspect <web-or-db-container> \
+#     --format '{{index .Config.Labels "com.docker.compose.project"}}'
+#   docker volume ls --format '{{.Name}}' | grep '_pgdata$'
+#
+# If a volume already exists, an earlier run with this project name has already
+# initialised and migrated it — production would then start on a database seeded
+# by that run. Local verification must use its own project name
 # (`scripts/verify-container-stack.mjs` does: `-p 321clementi-parking-verify`).
-docker volume ls --format '{{.Name}}' | grep '^321clementi-parking_' && \
-  echo 'ABORT: volume already exists — confirm nothing else uses it, then docker compose -p 321clementi-parking down -v'
+docker volume ls --format '{{.Name}}' | grep -E '(_pgdata|clementi-parking_pgdata)$' && \
+  echo 'ABORT: volume already exists — confirm nothing else uses it, then docker compose -p <its-project> down -v'
 docker compose up -d db
 docker compose exec db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
@@ -147,22 +160,137 @@ the rollback can legitimately fail for data reasons, do not leave that decision 
 live: pin `IMAGE_TAG` to the previous build and recreate `web`. Use `db:rollback` for
 0001–0004, which have no data-dependent failure mode.
 
-## 4. NocoDB connection parameters and table linkage
+## 4. NocoDB — one centralized instance, bridged onto the application network
 
-| Setting | Value |
+**One NocoDB, not two.** The mall-management UI is the pre-existing Coolify service
+`nocodb` (container `nocodb-fbvelpdaf5kwl9im9qyr4i4u`, project `main`) at
+`https://nocodb.pancatz.com`. The `nocodb` service profile, its `nocodb-data` volume and
+its `NC_*` variables were **removed from `docker-compose.yml`** (PAN-110): deploying them
+would stand up a second admin UI over the same tables, double the memory footprint and
+split mall management across two bases with two sets of credentials. Everything
+NocoDB-side — `NC_AUTH_JWT_SECRET`, `NC_SITE_URL`, the super-admin bootstrap — now belongs
+to that Coolify service, not to this repository.
+
+`db` publishes no host port (§2 step 3), so the data source is reachable **only over a
+shared Docker network**. The parameters below work only after the bridge in §4.2 is in
+place; without it, the connection fails with `ECONNREFUSED 127.0.0.1:5432`.
+
+### 4.1 Data source parameters
+
+NocoDB → **New base** → **New data source** → PostgreSQL, then map the fields exactly:
+
+| NocoDB UI field | Value |
 |---|---|
-| NocoDB metadata store (`NC_DB`) | `pg://db:5432?u=$POSTGRES_USER&p=$POSTGRES_PASSWORD&d=nocodb_meta` |
-| Data source (the application DB) | host `db`, port `5432`, database `$POSTGRES_DB`, schema `public` |
-| Data source role | `mall_operations` — **not** `POSTGRES_USER` |
-| `NC_ALLOW_LOCAL_EXTERNAL_DBS` | `true` (required: the data source is on the private compose network) |
-| `NC_SITE_URL` | `https://nocodb.pancatz.com` |
-| `NC_AUTH_JWT_SECRET` | required, `openssl rand -hex 32` |
-| Tables to link | `shops`, `voucher_pool`, `redemption_logs` |
+| **Host** | `db` |
+| **Port** | `5432` |
+| **Database** | `clementi_redemption` |
+| **Schema** | `public` |
+| **User** | `mall_operations` |
+| **Password** | the provisioned `MALL_OPS_DB_PASSWORD` (§3 step 4) |
 
-`nocodb_meta` is a **separate database** on the same PostgreSQL 16 instance. Pointed at the
-application database, NocoDB materialises ~140 `nc_*` tables plus `xc_knex_migrationsv0`
-into `public`, mixed in with the redemption tables, listed as linked tables, and carried in
-every `pg_dump` of production data. If NocoDB was ever pointed at the application database:
+- `db` is the compose service name, resolved by Docker's embedded DNS on the `clementi`
+  network. It is **not** `localhost`, not `127.0.0.1`, and not the NocoDB Coolify service
+  alias. A data source created with an empty Host silently defaults to `127.0.0.1` and
+  fails with `ECONNREFUSED 127.0.0.1:5432` — the exact symptom recorded during the PAN-109
+  deployment verification.
+- Leave **SSL off**. The connection never leaves the Docker bridge network.
+- **User is `mall_operations`, never `POSTGRES_USER`.** The role and its column-level
+  grants come from §3 step 4; do not create a role through the NocoDB form.
+- The password is a secret: it is typed into the NocoDB form and read from the operator's
+  vault or environment. It is never committed and never written into this document.
+- Tables to link: `shops`, `voucher_pool`, `redemption_logs`.
+
+### 4.2 Bridging the centralized NocoDB onto the application network
+
+Both containers have to sit on one Docker network: `db` publishes no host port (§2 step 3)
+and `Host = db` is a compose service name, resolved by Docker's embedded DNS — only a shared
+network knows that name.
+
+**Measured on ewsvr-ubuntu (read-only, 2026-09-24).** The application containers sit on *two*
+networks, and both carry the `db` / `web` aliases:
+
+| Network | What it is |
+|---|---|
+| `k5eshqzwnefkjqc0gvbgtph3` | Coolify's per-resource network for this stack. Created before the current containers and **not** recreated when they are (verified: network created 19:15 +08, containers 19:37 +08). |
+| `k5eshqzwnefkjqc0gvbgtph3_clementi` | The compose file's `clementi` network, prefixed with the project name Coolify passed via `-p`. Becomes `321clementi-parking_clementi` at the next deploy — see below. |
+
+The NocoDB container is attached to Coolify's resource network, so the bridge already works on
+that host:
+
+```console
+$ docker exec nocodb-fbvelpdaf5kwl9im9qyr4i4u sh -c 'getent hosts db; nc -z -w 3 db 5432 && echo reachable'
+172.24.0.3        db  db
+reachable
+```
+
+The data source in §4.1 can therefore be created today. Run the steps below when it is
+missing — a new host, a recreated Coolify resource, or a container that lost the attachment:
+
+```bash
+# 1. Which network(s) the application containers are on
+docker inspect db-k5eshqzwnefkjqc0gvbgtph3-113702503873 \
+  --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+# k5eshqzwnefkjqc0gvbgtph3 k5eshqzwnefkjqc0gvbgtph3_clementi
+
+# 2. Bridge NocoDB onto this stack's own, pinned network name
+docker network connect 321clementi-parking_clementi nocodb-fbvelpdaf5kwl9im9qyr4i4u
+# rollback:  docker network disconnect 321clementi-parking_clementi nocodb-fbvelpdaf5kwl9im9qyr4i4u
+
+# 3. Prove it, then press Test connection in the data-source dialog
+docker inspect nocodb-fbvelpdaf5kwl9im9qyr4i4u \
+  --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+docker exec nocodb-fbvelpdaf5kwl9im9qyr4i4u sh -c 'getent hosts db; nc -z -w 3 db 5432 && echo reachable'
+```
+
+A `psql` probe from inside the `db` container proves nothing: `postgres:16-alpine` ships
+`trust` for loopback *inside* that container (§8), so the check has to come from NocoDB
+itself or from another container on the network.
+
+**Why the name is pinned.** Coolify runs this stack with its own `-p <resource-uuid>`, which
+overrides the `name:` at the top of the compose file — that is why the compose network was
+named `k5eshqzwnefkjqc0gvbgtph3_clementi`, a name no document or script can rely on and which
+changes whenever the Coolify resource is recreated. `networks.clementi.name` is now pinned to
+`321clementi-parking_clementi` (asserted by CI; the verification overlay overrides it through
+`CLEMENTI_NETWORK_NAME`), and an explicit `name:` wins over `-p`.
+
+At the next deploy of this stack the compose network is created under the new name and the
+old one is left empty. Containers also rejoin Coolify's resource network, so a bridge made
+there — as on this host — keeps working; re-check step 3 after any redeploy that changes the
+resource, and redo step 2 if it comes back empty. The `pgdata` volume name is deliberately
+**not** pinned, so the database volume and its data are untouched by the rename.
+
+**Persisting it.** `docker network connect` attaches to a *container*, and Coolify recreates
+the NocoDB container on every redeploy of that service, so a manual attach is lost. Persist
+it in the NocoDB service's own compose definition (Coolify → project `main` → service
+`nocodb` → configuration/compose editor) by declaring this stack's network as external and
+listing it on the service:
+
+```yaml
+services:
+  nocodb:
+    networks: [default, clementi-app]
+
+networks:
+  clementi-app:
+    external: true
+    name: 321clementi-parking_clementi
+```
+
+Deploy the application stack first — an `external` network must already exist or the
+NocoDB service's own deploy fails — then redeploy NocoDB and repeat step 3. **This edit has
+not been executed on ewsvr-ubuntu yet**: the first redeploy after it is the verification,
+and membership should be re-checked after any redeploy of either stack.
+
+### 4.3 `nocodb_meta` — keep NocoDB's metadata out of the application schema
+
+`nocodb_meta` is a **separate database** in the application PostgreSQL instance, created on
+first boot by `scripts/postgres-init/10-nocodb-meta.sql`. No service in this repository uses
+it any more — the centralized instance keeps its own metadata store — but it is retained
+because an instance pointed *here* must never use `clementi_redemption` as its metadata
+store. Pointed at the application database, NocoDB materialises ~140 `nc_*` tables plus
+`xc_knex_migrationsv0` into `public`, mixed in with the redemption tables, listed as linked
+tables, and carried in every `pg_dump` of production data. If NocoDB was ever pointed at the
+application database:
 
 ```bash
 docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
@@ -173,23 +301,27 @@ docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
   END \$\$;"
 ```
 
-### Linking the tables
+### 4.4 Linking the tables
 
 The NocoDB instance runs as `mall_operations`, so it can only see the four application
 tables — everything else in the schema is invisible to it.
 
-1. Sign in to NocoDB and create a base named **321 Clementi Mall Management**.
-2. Add a data source of type PostgreSQL with the parameters above, credentials
-   `mall_operations` / `$MALL_OPS_DB_PASSWORD`, schema `public`.
+1. Sign in to the centralized instance at `https://nocodb.pancatz.com` and create a base
+   named **321 Clementi Mall Management**.
+2. Add a data source of type PostgreSQL with exactly the fields in §4.1 — `db` / `5432` /
+   `clementi_redemption` / `public`, credentials `mall_operations` / `$MALL_OPS_DB_PASSWORD`.
+   The bridge in §4.2 has to be in place first, or the UI's **Test connection** fails with
+   `ECONNREFUSED 127.0.0.1:5432`.
 3. NocoDB introspects the source; `shops`, `voucher_pool` and `redemption_logs` are
-   auto-linked. Confirm with:
+   auto-linked. Confirm with (the script runs from the host, so it takes the
+   loopback-mapped port from the verification overlay — see §5):
    ```bash
    NOCODB_URL=https://nocodb.pancatz.com XC_TOKEN=<token> \
-   MALL_OPS_DATABASE_URL=postgresql://mall_operations:$MALL_OPS_DB_PASSWORD@db:5432/$POSTGRES_DB \
+   MALL_OPS_DATABASE_URL="postgresql://mall_operations:$MALL_OPS_DB_PASSWORD@127.0.0.1:15432/${POSTGRES_DB}" \
      ./scripts/deploy-nocodb-config.sh
    ```
 
-### Why the permissions live in PostgreSQL, not NocoDB
+### 4.5 Why the permissions live in PostgreSQL, not NocoDB
 
 NocoDB CE has table-level permissions but no column-level write denial, so it cannot stop a
 mall-management user — or a leaked NocoDB data-source credential — from rewriting
@@ -327,8 +459,20 @@ or restarted.
 n8n's data. The issue calls for a dedicated PostgreSQL 16 container, which is what the `db`
 service in `docker-compose.yml` provides.
 
-**Do not start a second NocoDB.** The `nocodb` profile in `docker-compose.yml` is for hosts
-without one. Here, point the existing Coolify service at the new database instead (§4).
+**Do not start a second NocoDB.** `docker-compose.yml` no longer defines one (PAN-110) —
+the Coolify service at `https://nocodb.pancatz.com` is the only instance, and the app stack
+is reached over a shared Docker network instead (§4.2).
+
+**Measured network and volume facts** (read-only, 2026-09-24 — re-check rather than assume):
+
+| Fact | Value |
+|---|---|
+| Live compose project | `k5eshqzwnefkjqc0gvbgtph3` — Coolify passes it as `-p`, which overrides the compose file's `name:` |
+| Application containers | `web-k5eshqzwnefkjqc0gvbgtph3-113702492093` (`321clementi-parking-web:local`), `db-k5eshqzwnefkjqc0gvbgtph3-113702503873` (`postgres:16-alpine`) |
+| Their networks | `k5eshqzwnefkjqc0gvbgtph3` (Coolify's resource network, older than the containers) **and** `k5eshqzwnefkjqc0gvbgtph3_clementi` (the compose network); both alias `db` / `web` |
+| Database volume | `k5eshqzwnefkjqc0gvbgtph3_pgdata` — **not** `321clementi-parking_pgdata`, which is why §3 step 1 reads the name off the running stack |
+| NocoDB container networks | `fbvelpdaf5kwl9im9qyr4i4u`, `ynerrvhzq9y5gmgnagzld6j8`, `k5eshqzwnefkjqc0gvbgtph3` — attachment to the last one is what makes `db` resolve (§4.2; reachability verified with `nc -z db 5432`) |
+| Retired hostname | `321clementi-nocodb.pancatz.com` still resolves (Cloudflare `104.21.12.97` / `172.67.194.8`) and returns HTTP **404** at the edge, while no wildcard record exists under `pancatz.com` — a leftover record to delete (§7.6) |
 
 ### 7.2 The application hostname does not exist yet
 
@@ -385,7 +529,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://<production-hostname>
 `scripts/verify-container-stack.mjs` is a **throwaway-stack** check, not a health check for the
 deployed services. It is safe to run on this host: it runs under its own compose project
 (`321clementi-parking-verify`, override with `VERIFY_PROJECT`) and its `down -v` teardown removes
-only that project's volumes, so it cannot touch the live `pgdata` / `nocodb-data`. Earlier
+only that project's volumes, so it cannot touch the live `pgdata` volume. Since PAN-110 it also
+overrides `CLEMENTI_NETWORK_NAME`, because the pinned network name now wins over `-p`. Earlier
 revisions of this runbook recommended it here without that isolation — it shared the production
 project name and would have deleted the deployed database. It now refuses to start if
 `VERIFY_PROJECT` names the production project.
@@ -446,6 +591,42 @@ the per-IP rate limit.
 Until step 6 returns a non-403, the application is unusable from the portal: do not
 announce the deployment.
 
+### 7.6 Retiring the duplicate NocoDB hostname — Cloudflare Tunnel and Coolify cleanup
+
+Nothing in this repository references `321clementi-nocodb.pancatz.com`, but a duplicate
+NocoDB stood up during PAN-109 can leave artefacts behind on the host side, and each one is
+a second route into the same database. Check and remove all three:
+
+1. **Cloudflare Tunnel public hostname.** The tunnel on this host is
+   `cloudflared-i8lsm19arq8z3g2lnpwi8nhx`. Measured state: `321clementi-nocodb.pancatz.com`
+   resolves to Cloudflare (`104.21.12.97` / `172.67.194.8`) and answers HTTP **404** at the
+   edge, while `zzz-nonexistent-pan110.pancatz.com` does not resolve at all — so there is no
+   wildcard record hiding this, the record is real and stale. In the Cloudflare dashboard →
+   **Zero Trust → Networks → Tunnels → that tunnel → Public Hostnames**, delete any
+   `321clementi-nocodb.pancatz.com` entry (which removes its proxied DNS record). Confirm:
+   ```bash
+   dig +short 321clementi-nocodb.pancatz.com     # expect no A/AAAA/CNAME
+   curl -s -o /dev/null -w '%{http_code}\n' https://321clementi-nocodb.pancatz.com/   # expect a DNS failure
+   ```
+2. **Coolify domain assignment.** If project `main`'s `nocodb` service — or the application
+   service — carries an extra domain for that hostname, remove it in the service's
+   **Domains** field. Traefik keeps serving a hostname for as long as the label exists, even
+   with the tunnel rule deleted.
+3. **Coolify magic variables.** Coolify auto-generates `SERVICE_FQDN_NOCODB` /
+   `SERVICE_URL_NOCODB` for a service that exposes a port. A stale entry in the
+   application's environment panel re-creates the domain on the next redeploy, so delete
+   both there if present.
+
+Before deleting anything, confirm the *live* instance still answers — this cleanup must not
+touch `nocodb.pancatz.com`:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://nocodb.pancatz.com/api/v1/health   # expect 200
+```
+
+`docs/operations/SHOP_MANAGEMENT_SOP.md` sends mall staff to `https://nocodb.pancatz.com`
+only, so no runbook or SOP points at the retired hostname once this cleanup is done.
+
 ## 8. Security posture — accepted trade-offs
 
 Reviewed in the PAN-109 security review; recorded so the next operator does not have to
@@ -453,12 +634,13 @@ re-litigate them.
 
 | Item | Posture |
 |---|---|
-| Host port exposure | None. `web` and `nocodb` publish nothing; the CI port-exposure guard fails the build if that regresses. |
-| Container hardening | `web` runs non-root with `cap_drop: [ALL]` and `no-new-privileges`; `nocodb` gets `no-new-privileges` only — upstream runs it as root and its startup has not been audited for capability requirements. Both cap `json-file` logs at 10 MB × 3 so a colocated stack cannot fill the host disk. |
-| NocoDB image | Pinned to `nocodb/nocodb:2026.09.0` — the release the least-privilege boundary was calibrated against. |
+| Host port exposure | None. No service in `docker-compose.yml` (`web`, `db`) publishes a host port; the CI guard fails the build if that regresses. |
+| Container hardening | `web` runs non-root with `cap_drop: [ALL]` and `no-new-privileges`; `db` keeps the stock `postgres:16-alpine` posture. Both cap `json-file` logs at 10 MB × 3 so a colocated stack cannot fill the host disk. The NocoDB container belongs to another Coolify service and is outside this file's scope. |
+| NocoDB image | Not part of this stack: the single instance is the Coolify service `nocodb`. The least-privilege boundary was verified against NocoDB **2026.09.0**, so re-run `scripts/deploy-nocodb-config.sh` (§5) after any upgrade of that service — an unreviewed release could change the data-source behaviour the grants were calibrated against. |
+| NocoDB network attachment | The centralized NocoDB is attached to this stack's `clementi` network (§4.2) and reaches `db:5432` as `mall_operations`. It is the only non-stack container on that network, and app ingress stays Traefik-only. |
 | Secret handling | No secret is passed as an argv value anywhere in this runbook; the role-provisioning password reaches `psql` on stdin (§3 step 4). |
-| DB authentication | `postgres:16-alpine` ships `trust` for loopback **inside** the `db` container and `scram-sha-256` for everything else, so `web` and `nocodb` are password-authenticated over the compose network. Consequence: `docker compose exec db psql -U mall_operations …` succeeds with no password, so it cannot be used to test the role's password — connect from another container on the `clementi` network instead. Verified: correct password accepted, wrong password returns `FATAL: password authentication failed`. |
-| NocoDB admin trust | `NC_ALLOW_LOCAL_EXTERNAL_DBS=true` is required for the private-network data source. It also lets a NocoDB super-admin point a new source at arbitrary private hosts from inside the compose network. Accepted: NocoDB admins are trusted mall-operations staff. |
+| DB authentication | `postgres:16-alpine` ships `trust` for loopback **inside** the `db` container and `scram-sha-256` for everything else, so `web` and the bridged NocoDB container are password-authenticated over the compose network. Consequence: `docker compose exec db psql -U mall_operations …` succeeds with no password, so it cannot be used to test the role's password — connect from another container on the `clementi` network instead. Verified: correct password accepted, wrong password returns `FATAL: password authentication failed`. |
+| NocoDB admin trust | `NC_ALLOW_LOCAL_EXTERNAL_DBS=true` on the centralized NocoDB service is what permits the private-network data source in §4.1; if **Test connection** is refused for a private host, that setting is the first thing to check. It also lets a NocoDB super-admin point a new source at arbitrary private hosts from inside the compose network. Accepted: NocoDB admins are trusted mall-operations staff. |
 | Rate-limiter buckets | In-process `Map`s — they reset on restart/redeploy and are not shared across replicas. Correct for the single `web` replica this stack defines; horizontal scaling needs a shared store first. |
 | `ALLOWED_SITE_DOMAINS` scope | The production image trusts exactly the hostnames in this variable plus `localhost`/`127.0.0.1`. The `*.vercel.app` wildcard is only compiled in when `DEPLOY_TARGET=vercel`. |
 

@@ -3,14 +3,22 @@
 #
 #   web     Astro SSR (Bun) — the redemption portal + API
 #   db      PostgreSQL 16   — voucher_pool, redemption_logs, shops, audit logs
-#   nocodb  Admin UI        — mall management CRUD over the same database
+#
+# NocoDB is deliberately NOT a service in this file. The workspace runs exactly
+# one instance — the Coolify service `nocodb`, served at
+# https://nocodb.pancatz.com — and it reaches `db` over a shared Docker network
+# (the `clementi` network below, or Coolify's per-resource network, which carries
+# the same `db` / `web` aliases). A second NocoDB deployed from here would
+# duplicate the admin UI, double its memory footprint and split mall management
+# across two bases. The retired `nocodb` service profile / `nocodb-data` volume
+# from PAN-109 is gone; see docs/operations/COOLIFY_DEPLOYMENT.md §4 for the data
+# source parameters, the bridging step and how to persist it across redeploys.
 #
 # Deploy:
 #   cp .env.example .env && $EDITOR .env      # fill every value marked REQUIRED
 #   docker compose up -d db
 #   docker compose run --rm web bun run db:migrate     # apply 0001-0005
 #   docker compose up -d web
-#   docker compose --profile nocodb up -d nocodb       # only if NocoDB is not already running
 #
 # Full runbook, rollback and verification: docs/operations/COOLIFY_DEPLOYMENT.md
 # ---------------------------------------------------------------------------
@@ -68,9 +76,6 @@ services:
       # neither key is read. Kept so an existing .env still validates.
       PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:-}
       CLOUDFLARE_TURNSTILE_SECRET_KEY: ${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
-
-      # --- admin UI reference ---------------------------------------------
-      NOCODB_URL: ${NOCODB_URL:-http://nocodb:8080}
 
     # No published host port — by design, and load-bearing. Ingress is the
     # Coolify/Traefik proxy's job: it reaches this container over the
@@ -141,12 +146,15 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # First-boot only (empty data directory): creates the nocodb_meta
-      # database so NocoDB's ~140 nc_* metadata tables never land in the
-      # application schema. See scripts/postgres-init/10-nocodb-meta.sql.
+      # First-boot only (empty data directory): creates the `nocodb_meta`
+      # database. No service in this file uses it — the centralized NocoDB keeps
+      # its own metadata store — but it is retained so an instance that is
+      # pointed here still gets a database separate from the application schema
+      # (~140 `nc_*` tables in `public` would otherwise contaminate every
+      # pg_dump). See scripts/postgres-init/10-nocodb-meta.sql.
       - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
-    # No published port — only `web` (and NocoDB, when enabled here) need to
-    # reach it. For an ad-hoc psql session use:
+    # No published port — only `web` and the bridged NocoDB container (§4 of the
+    # runbook) need to reach it. For an ad-hoc psql session use:
     #   docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
     # (the `sh -c` matters: a bare `psql -U "$POSTGRES_USER"` is expanded by the
     # *host* shell, which usually does not have those variables set.)
@@ -164,76 +172,18 @@ services:
       start_period: 20s
     networks: [clementi]
 
-  # -------------------------------------------------------------------------
-  # NocoDB admin UI — OPTIONAL
-  #
-  # Start this only if the host does not already run NocoDB. If
-  # nocodb.pancatz.com is already served, point that instance at this database
-  # using the connection parameters in docs/operations/COOLIFY_DEPLOYMENT.md §4.
-  #
-  #   docker compose --profile nocodb up -d nocodb
-  # -------------------------------------------------------------------------
-  nocodb:
-    # Pinned, not `latest`. The least-privilege boundary is calibrated against
-    # this release's data-source behaviour (the `42501` responses recorded in
-    # the runbook): an unreviewed upstream release plus `restart:
-    # unless-stopped` could change it on the next restart. Every other image in
-    # this file is pinned for the same reason.
-    image: nocodb/nocodb:2026.09.0
-    profiles: [nocodb]
-    restart: unless-stopped
-    environment:
-      # NocoDB's own metadata store, in its own database — pointed at the app
-      # database it would dump ~140 `nc_*` tables into `public` alongside
-      # shops / voucher_pool / redemption_logs.
-      NC_DB: "pg://db:5432?u=${POSTGRES_USER:-clementi}&p=${POSTGRES_PASSWORD:-}&d=${NC_META_DB:-nocodb_meta}"
-      # Required for any non-local deployment — signs NocoDB session tokens.
-      # Left empty rather than `${VAR:?message}` so Coolify cannot substitute the
-      # message text as a signing key; NocoDB then generates its own.
-      NC_AUTH_JWT_SECRET: ${NC_AUTH_JWT_SECRET:-}
-      # Public URL used in invitation/password-reset links and Swagger docs.
-      NC_SITE_URL: ${NOCODB_URL:-http://localhost:8080}
-      # The application data source is on the private compose network, and
-      # NocoDB refuses private/localhost data sources without this. Scope the
-      # exposure: the source is the least-privilege `mall_operations` role
-      # created by scripts/nocodb-db-roles.sql, not POSTGRES_USER.
-      NC_ALLOW_LOCAL_EXTERNAL_DBS: "true"
-      NC_DB_POOL_MAX: "10"
-      NC_DISABLE_TELE: "true"
-      NC_DISABLE_SUPPORT_CHAT: "true"
-      # Optional: pre-provision the super admin so the first visit skips the
-      # signup prompt. Setting NC_ADMIN_EMAIL without a password aborts boot.
-      NC_ADMIN_EMAIL: ${NC_ADMIN_EMAIL:-}
-      NC_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD:-}
-    volumes:
-      - nocodb-data:/usr/app/data
-    # No published host port. Reach the bundled UI through the domain Coolify
-    # assigns to this service (Traefik owns ingress) or an ssh tunnel. Two
-    # reasons not to publish it: it would bypass the Cloudflare Tunnel, and on a
-    # host that already runs Coolify the default port collides with
-    # coolify-proxy's own :8080 binding, so the container would not start.
-    expose:
-      - "8080"
-    # Upstream runs this image as root; no-new-privileges is still worth having
-    # and does not change behaviour. `cap_drop: [ALL]` is deliberately NOT set
-    # here — unlike `web`, this is a third-party image whose startup has not
-    # been audited for capability requirements.
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks: [clementi]
-
 volumes:
   pgdata:
-  nocodb-data:
 
 networks:
   clementi:
+    # Pinned, and deliberately not left to the compose project name. The single
+    # centralized NocoDB (a Coolify service in another project) has to be
+    # attached to this network to resolve `db:5432`, and a bridge target that
+    # changes name between deploys cannot be documented or scripted. An explicit
+    # `name:` also wins over `docker compose -p`, which is why the verification
+    # stack overrides it through CLEMENTI_NETWORK_NAME instead of relying on its
+    # own `-p` (scripts/verify-container-stack.mjs) — otherwise a verification
+    # run on the production host would join the production network.
+    name: ${CLEMENTI_NETWORK_NAME:-321clementi-parking_clementi}
     driver: bridge
