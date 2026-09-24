@@ -81,7 +81,6 @@ paths:
             schema:
               type: object
               required:
-              - vehiclePlate
               - receiptImage
               - shopId
               - form_rendered_at
@@ -166,7 +165,15 @@ paths:
       parameters:
       - name: plate
         in: query
-        required: true
+        required: false
+        description: Required if receipt is not provided
+        schema:
+          type: string
+          minLength: 2
+      - name: receipt
+        in: query
+        required: false
+        description: Required if plate is not provided
         schema:
           type: string
           minLength: 2
@@ -187,15 +194,22 @@ paths:
                 type: object
                 required:
                 - success
-                - vehicle_plate
+                - search_type
                 - data
                 properties:
                   success:
                     type: boolean
                     example: true
-                  vehicle_plate:
+                  search_type:
+                    type: string
+                    enum: [plate, receipt]
+                    example: plate
+                  plate:
                     type: string
                     example: SBA 1234 A
+                  receipt:
+                    type: string
+                    example: '123456'
                   data:
                     type: array
                     items:
@@ -234,9 +248,10 @@ paths:
                   type: string
                   format: uuid
                   description: Redemption record UUID (required, in JSON body)
-                vehicle_plate:
+                receipt_number:
                   type: string
-                  example: SBA 1234 A
+                  example: "89812931"
+                  description: Required for fallback verification if X-Claim-Token is omitted
                 receipt_amount:
                   type: number
                   format: float
