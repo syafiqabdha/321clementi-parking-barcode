@@ -1,0 +1,119 @@
+# Neon ephemeral preview branches.
+#
+# One Neon branch per pull request, named `preview/pr-<n>-<head-branch>`, expired
+# after 14 days and deleted when the PR closes. The branch's database is migrated
+# so preview deployments come up against a schema that matches the PR.
+#
+# Requires, in this repository (Settings -> Secrets and variables -> Actions):
+#   * Variable NEON_PROJECT_ID  — the Neon project id
+#   * Secret   NEON_API_KEY     — a Neon API key
+# The create job fails fast with an explicit ::error:: when either is missing,
+# rather than dying inside the action with an opaque message.
+#
+# NOTE on the connection string: the create action is pinned to @v6, and v6's
+# action.yml declares its pooled output as `db_url_pooled`. The Neon dashboard
+# template emits `db_url_with_pooler`, which does not exist in v6 and expands to
+# an empty string — that would silently run migrations against nothing. We use
+# the real name and assert it is non-empty before migrating.
+name: Neon Preview Branch
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.branch_name.outputs.current_branch }}
+    steps:
+      - name: Get branch name
+        id: branch_name
+        uses: tj-actions/branch-names@v8
+
+  create_neon_branch:
+    name: Create Neon Branch
+    needs: setup
+    if: github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize'
+    runs-on: ubuntu-latest
+    outputs:
+      db_url: ${{ steps.create_neon_branch.outputs.db_url }}
+      db_url_pooled: ${{ steps.create_neon_branch.outputs.db_url_pooled }}
+      branch_id: ${{ steps.create_neon_branch.outputs.branch_id }}
+    steps:
+      - name: Verify Neon credentials are configured
+        env:
+          # Passed through the environment, never interpolated into the command
+          # line, so the key cannot leak into the process argv or a log line.
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          if [ -z "$NEON_PROJECT_ID" ]; then
+            echo "::error::Repository variable NEON_PROJECT_ID is not set (Settings -> Secrets and variables -> Actions -> Variables)."
+            exit 1
+          fi
+          if [ -z "$NEON_API_KEY" ]; then
+            echo "::error::Repository secret NEON_API_KEY is not set (Settings -> Secrets and variables -> Actions -> Secrets)."
+            exit 1
+          fi
+
+      - name: Get branch expiration date as an env variable (2 weeks from now)
+        run: echo "EXPIRES_AT=$(date -u --date '+14 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Create Neon Branch
+        id: create_neon_branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          expires_at: ${{ env.EXPIRES_AT }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run migrations against the Neon branch
+        env:
+          # Pooled connection string (the `-pooler` host), which is what a
+          # serverless/CI client should use. `src/db/connection.ts` already runs
+          # with prepare:false, so the pooler is safe.
+          DATABASE_URL: ${{ steps.create_neon_branch.outputs.db_url_pooled }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::create-branch-action returned an empty db_url_pooled — check the pinned major's outputs before trusting this step."
+            exit 1
+          fi
+          bun run db:status
+          bun run db:migrate
+
+  delete_neon_branch:
+    name: Delete Neon Branch
+    needs: setup
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Neon Branch
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
+          api_key: ${{ secrets.NEON_API_KEY }}
