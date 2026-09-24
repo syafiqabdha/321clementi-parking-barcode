@@ -29,8 +29,8 @@ The submission pipeline evaluates rapidly failing gates to protect the external 
 1. **Honeypot (`hp_company_field`) & Timing Gate (<1500ms)** to reject naïve bots.
 2. **Cloudflare Turnstile** for computational browser validation.
 3. **IP-based Rate Limiter** (sliding window).
-4. **Plate Format Constraints** (LTA Mod-19).
-5. **Invariant Daily Limit** (1 redemption per plate).
+4. **Plate Format Constraints** (Superseded) - originally LTA Mod-19, removed in favor of plain-text canonicalization and later made optional (PAN-104).
+5. **Invariant Daily Limit** - previously 1 redemption per plate, now enforced strictly via receipt deduplication (PAN-104).
 6. **Binary SHA-256 Receipt Hash Deduplication** (Migration 0003 enforcement `uq_redemption_receipt_hash_daily`).
 7. **Semantic AI Payload Structure** (Extract receipt number, shop details, total spend).
 8. **AI Receipt Verification** natively hitting Gemini 1.5 Flash, with a pre-configured `N8N_RECEIPT_VERIFIER_URL` webhook serving as an override or traffic-routing fallback.
