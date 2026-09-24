@@ -76,6 +76,7 @@ Four PostgreSQL 16 migrations under `migrations/`:
 | `0002` | `shops` table + unclaim support columns on `redemption_logs` |
 | `0003` | Receipt hash deduplication index + AI verification result columns |
 | `0004` | Enforce 10-digit numeric codes check constraint |
+| `0005` | Shift from vehicle plate hashing to receipt number tracking (PAN-104) |
 
 Run migrations:
 
@@ -93,6 +94,8 @@ bun run db:status    # show applied / pending state
 - [Brand Identity & Design System](./docs/design/design.md)
 - [OpenAPI Specification](./docs/openapi.yaml)
 - [ADR-001: Plate History, Unclaim & Shop Selection](./docs/adr/ADR-001-plate-history-unclaim-shop-selection.md)
+- [ADR-002: Receipt Verification and Anti-Bot](./docs/adr/ADR-002-receipt-verification-and-anti-bot.md)
+- [Coolify Deployment Runbook](./docs/operations/COOLIFY_DEPLOYMENT.md)
 - [Shop Management SOP](./docs/operations/SHOP_MANAGEMENT_SOP.md)
 - [Security Audit Report](./docs/security/SECURITY_AUDIT_REPORT.md)
 
@@ -125,7 +128,7 @@ The portal is available at `http://localhost:4321`.
 
 ## Testing
 
-297 tests across 14 test files, executed with Bun's built-in test runner:
+403 tests across 19 test files, executed with Bun's built-in test runner:
 
 ```bash
 bun test
@@ -153,8 +156,17 @@ bun test
 
 ## Deployment & Infrastructure
 
-### Production Deployment (Vercel)
-The mobile web portal is deployed to Vercel as a static Astro 5 build configured via [`vercel.json`](./vercel.json).
+### Production Deployment (Coolify on `ewsvr-ubuntu`)
+The production application runs on self-hosted Coolify on `ewsvr-ubuntu` (10.1.0.99 / Tailscale) via Docker Compose:
+- **Web App (`web`)**: Multi-stage Bun image running Astro SSR bundle via `@astrojs/node` standalone.
+- **Database (`db`)**: Dedicated PostgreSQL 16 Alpine container with healthchecks and persistent storage.
+- **Admin UI (NocoDB)**: Connected to the centralized NocoDB instance at `https://nocodb.pancatz.com` using least-privilege `mall_operations` database credentials over Coolify's internal Docker network (`clementi`).
+- **Ingress**: Cloudflare Tunnel routing traffic into Traefik proxy.
+
+For full setup, environment configuration, migration commands, and verification procedures, refer to the [Coolify Deployment Runbook](./docs/operations/COOLIFY_DEPLOYMENT.md).
+
+### Alternative Deployment (Vercel)
+The mobile web portal can alternatively be deployed to Vercel as configured via [`vercel.json`](./vercel.json).
 
 #### Environment Variables
 
