@@ -39,7 +39,11 @@ services:
       # --- database -------------------------------------------------------
       # `db` is the compose service name — the container reaches it over the
       # internal network. Do NOT point this at a published host port.
-      DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+      # `:-` not `:?` (see the note on the db service). Setting DATABASE_URL
+      # explicitly in the platform's Environment Variables panel therefore still
+      # wins over this constructed default — which is the escape hatch for a
+      # POSTGRES_PASSWORD containing characters that would break the URL.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-clementi}:${POSTGRES_PASSWORD:-}@db:5432/${POSTGRES_DB:-clementi_redemption}}
       # Bun SQL pool ceiling. One web replica against PG's default
       # max_connections=100 leaves ample headroom.
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
@@ -48,8 +52,8 @@ services:
       # --- PII / admin ----------------------------------------------------
       # HMAC-SHA256 pepper for vehicle-plate hashing (PDPA / SEC-05).
       # Generate each with `openssl rand -hex 32`.
-      PLATE_HMAC_SECRET: ${PLATE_HMAC_SECRET:?PLATE_HMAC_SECRET is required}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      PLATE_HMAC_SECRET: ${PLATE_HMAC_SECRET:-}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
 
       # --- receipt verification (Gemini Vision) ---------------------------
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -87,6 +91,13 @@ services:
         condition: service_healthy
 
     healthcheck:
+      # Liveness only: `/` is prerendered and does not touch the database. A
+      # DB-backed probe is deliberately NOT used here — on a fresh volume the
+      # schema does not exist until `db:migrate` has run, and Coolify deploys
+      # with a single `up -d`, so a schema-dependent probe would report the web
+      # container unhealthy and fail a first deployment. Credential failures are
+      # therefore caught by the post-deploy check in the runbook instead. See
+      # docs/operations/COOLIFY_DEPLOYMENT.md §6.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4321/"]
       interval: 15s
       timeout: 5s
@@ -114,9 +125,18 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      # NOTE — this file deliberately uses no `${VAR:?message}` "required"
+      # syntax. Coolify parses it and, when VAR is unset, substitutes the
+      # *message text itself* as the value instead of aborting the deploy. That
+      # is exactly how the first production deploy ended up with
+      # POSTGRES_USER="POSTGRES_USER is required", a `db` that never went
+      # healthy and a poisoned pgdata volume. Defaults and empty values fail
+      # loudly inside the containers instead: postgres refuses to initialise
+      # without a password, src/db/connection.ts throws without DATABASE_URL,
+      # and isAuthorized() denies every admin request without ADMIN_API_KEY.
+      POSTGRES_USER: ${POSTGRES_USER:-clementi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-clementi_redemption}
       # Deterministic collation for voucher_code / slug ordering.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
@@ -127,9 +147,17 @@ services:
       - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     # No published port — only `web` (and NocoDB, when enabled here) need to
     # reach it. For an ad-hoc psql session use:
-    #   docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+    #   docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+    # (the `sh -c` matters: a bare `psql -U "$POSTGRES_USER"` is expanded by the
+    # *host* shell, which usually does not have those variables set.)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      # `$$VAR` is deliberate: Compose expands `$VAR` on the host at parse time,
+      # `$$VAR` reaches the container and is expanded by its own shell. Quoting
+      # then keeps a value containing whitespace as a single argument — without
+      # it, `pg_isready -U POSTGRES_USER is required` dies with
+      # `too many command-line arguments (first is "is")` and the container never
+      # reports healthy, so `web` never starts.
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -158,9 +186,11 @@ services:
       # NocoDB's own metadata store, in its own database — pointed at the app
       # database it would dump ~140 `nc_*` tables into `public` alongside
       # shops / voucher_pool / redemption_logs.
-      NC_DB: "pg://db:5432?u=${POSTGRES_USER:?POSTGRES_USER is required}&p=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}&d=${NC_META_DB:-nocodb_meta}"
-      # REQUIRED for any non-local deployment — signs NocoDB session tokens.
-      NC_AUTH_JWT_SECRET: ${NC_AUTH_JWT_SECRET:?NC_AUTH_JWT_SECRET is required}
+      NC_DB: "pg://db:5432?u=${POSTGRES_USER:-clementi}&p=${POSTGRES_PASSWORD:-}&d=${NC_META_DB:-nocodb_meta}"
+      # Required for any non-local deployment — signs NocoDB session tokens.
+      # Left empty rather than `${VAR:?message}` so Coolify cannot substitute the
+      # message text as a signing key; NocoDB then generates its own.
+      NC_AUTH_JWT_SECRET: ${NC_AUTH_JWT_SECRET:-}
       # Public URL used in invitation/password-reset links and Swagger docs.
       NC_SITE_URL: ${NOCODB_URL:-http://localhost:8080}
       # The application data source is on the private compose network, and
