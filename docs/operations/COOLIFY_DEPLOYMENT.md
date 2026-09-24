@@ -18,7 +18,7 @@
 | `scripts/verify-container-stack.mjs` | Boots the real stack and drives a full receipt→barcode redemption. |
 | `scripts/nocodb-db-roles.sql` | Least-privilege `mall_operations` database role for NocoDB. |
 | `scripts/deploy-nocodb-config.sh` | Real NocoDB + privilege verification (see §4). |
-| `scripts/postgres-init/10-nocodb-meta.sql` | First-boot creation of the `nocodb_meta` database. |
+| `scripts/postgres-init/10-nocodb-meta.sql` | Creation of the `nocodb_meta` database — **first boot of an empty data directory only**, so it does not exist on ewsvr-ubuntu (§4.3). |
 
 Runtime is **Bun**, not Node: `src/db/connection.ts` uses Bun's built-in SQL client and
 `scripts/migrate.ts` imports `SQL` from `bun`. Shipping the migration runner inside the
@@ -249,9 +249,14 @@ itself or from another container on the network.
 **Why the name is pinned.** Coolify runs this stack with its own `-p <resource-uuid>`, which
 overrides the `name:` at the top of the compose file — that is why the compose network was
 named `k5eshqzwnefkjqc0gvbgtph3_clementi`, a name no document or script can rely on and which
-changes whenever the Coolify resource is recreated. `networks.clementi.name` is now pinned to
-`321clementi-parking_clementi` (asserted by CI; the verification overlay overrides it through
-`CLEMENTI_NETWORK_NAME`), and an explicit `name:` wins over `-p`.
+changes whenever the Coolify resource is recreated. `networks.clementi.name` is now a literal
+`321clementi-parking_clementi`, and a literal `name:` wins over `-p`. It is deliberately
+**not** an environment variable: Coolify's environment panel would then be a live knob on the
+production network name, and CI can only assert the default.
+
+The mirror-image consequence is that `-p` alone no longer isolates the verification stack, so
+`docker-compose.verify.yml` pins the same network to `321clementi-parking-verify_clementi`
+itself. That keeps §5's command safe exactly as written, and CI asserts **both** names.
 
 At the next deploy of this stack the compose network is created under the new name and the
 old one is left empty. Containers also rejoin Coolify's resource network, so a bridge made
@@ -283,14 +288,39 @@ and membership should be re-checked after any redeploy of either stack.
 
 ### 4.3 `nocodb_meta` — keep NocoDB's metadata out of the application schema
 
-`nocodb_meta` is a **separate database** in the application PostgreSQL instance, created on
-first boot by `scripts/postgres-init/10-nocodb-meta.sql`. No service in this repository uses
-it any more — the centralized instance keeps its own metadata store — but it is retained
-because an instance pointed *here* must never use `clementi_redemption` as its metadata
-store. Pointed at the application database, NocoDB materialises ~140 `nc_*` tables plus
+`nocodb_meta` is a **separate database** in the application PostgreSQL instance, created by
+`scripts/postgres-init/10-nocodb-meta.sql`. No service in this repository uses it any more —
+the centralized instance keeps its own metadata store — but it is retained because an
+instance pointed *here* must never use `clementi_redemption` as its metadata store. Pointed
+at the application database, NocoDB materialises ~140 `nc_*` tables plus
 `xc_knex_migrationsv0` into `public`, mixed in with the redemption tables, listed as linked
-tables, and carried in every `pg_dump` of production data. If NocoDB was ever pointed at the
-application database:
+tables, and carried in every `pg_dump` of production data.
+
+**It does not exist on ewsvr-ubuntu.** That script only runs on an *empty* data directory, and
+this deployment's `db` container logs `PostgreSQL Database directory appears to contain a
+database; Skipping initialization`:
+
+```console
+$ docker exec db-k5eshqzwnefkjqc0gvbgtph3-113702503873 \
+    psql -U "$POSTGRES_USER" -d postgres -Atc "SELECT datname FROM pg_database ORDER BY 1"
+clementi_redemption
+postgres
+template0
+template1
+```
+
+There is no `nocodb_meta` — the only application database is `clementi_redemption`. Treat it
+as something to create **by hand** if a NocoDB is ever pointed at this instance, not as
+something already there:
+
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d postgres \
+  -c 'CREATE DATABASE nocodb_meta;'          # run once — it errors if the database already exists
+```
+
+The contamination guard it protects is currently intact — measured on the same instance,
+`clementi_redemption.public` holds **zero** `nc_*` / `xc_knex*` tables, so nothing has to be
+cleaned up. If NocoDB was ever pointed at the application database (or is again):
 
 ```bash
 docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
@@ -354,6 +384,11 @@ bun scripts/verify-container-stack.mjs
 #
 #   docker compose -p 321clementi-parking-verify \
 #     -f docker-compose.yml -f docker-compose.verify.yml up -d db
+#
+# No network variable is needed or wanted here: docker-compose.verify.yml pins
+# `networks.clementi.name` to 321clementi-parking-verify_clementi, which is what keeps this
+# throwaway database off the production network (`-p` alone cannot — a literal `name:` wins
+# over it). CI asserts both network names.
 #
 # Percent-encode reserved characters in the password (@ : / %) — the script decodes
 # each URI component before handing it to psql.
@@ -528,12 +563,13 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://<production-hostname>
 
 `scripts/verify-container-stack.mjs` is a **throwaway-stack** check, not a health check for the
 deployed services. It is safe to run on this host: it runs under its own compose project
-(`321clementi-parking-verify`, override with `VERIFY_PROJECT`) and its `down -v` teardown removes
-only that project's volumes, so it cannot touch the live `pgdata` volume. Since PAN-110 it also
-overrides `CLEMENTI_NETWORK_NAME`, because the pinned network name now wins over `-p`. Earlier
-revisions of this runbook recommended it here without that isolation — it shared the production
-project name and would have deleted the deployed database. It now refuses to start if
-`VERIFY_PROJECT` names the production project.
+(`321clementi-parking-verify`, override with `VERIFY_PROJECT`), and `docker-compose.verify.yml`
+pins its network to `321clementi-parking-verify_clementi` — both are needed, because a literal
+`name:` beats `-p` and `-p` alone would put the throwaway database on the production network.
+Its `down -v` teardown removes only that project's volumes, so it cannot touch the live
+`pgdata` volume. Earlier revisions of this runbook recommended it here without that isolation —
+it shared the production project name and would have deleted the deployed database. It now
+refuses to start if `VERIFY_PROJECT` names the production project.
 
 ### 7.5 The CSRF origin gate needs the proxy to present `https` (launch blocker)
 

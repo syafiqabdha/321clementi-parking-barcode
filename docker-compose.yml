@@ -146,12 +146,17 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # First-boot only (empty data directory): creates the `nocodb_meta`
-      # database. No service in this file uses it — the centralized NocoDB keeps
-      # its own metadata store — but it is retained so an instance that is
-      # pointed here still gets a database separate from the application schema
-      # (~140 `nc_*` tables in `public` would otherwise contaminate every
-      # pg_dump). See scripts/postgres-init/10-nocodb-meta.sql.
+      # First-boot only (empty data directory) — creates the `nocodb_meta`
+      # database, and only on a brand-new volume. On an existing deployment the
+      # script does not run at all: measured on ewsvr-ubuntu, `nocodb_meta` is
+      # absent and the live databases are `clementi_redemption` + `postgres`
+      # (create it by hand if a NocoDB is ever pointed here — §4.3).
+      #
+      # No service in this file uses it: the centralized NocoDB keeps its own
+      # metadata store. It is retained so an instance that is pointed here still
+      # gets a database separate from the application schema — ~140 `nc_*` tables
+      # in `public` would otherwise contaminate every `pg_dump`.
+      # See scripts/postgres-init/10-nocodb-meta.sql.
       - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     # No published port — only `web` and the bridged NocoDB container (§4 of the
     # runbook) need to reach it. For an ad-hoc psql session use:
@@ -180,10 +185,14 @@ networks:
     # Pinned, and deliberately not left to the compose project name. The single
     # centralized NocoDB (a Coolify service in another project) has to be
     # attached to this network to resolve `db:5432`, and a bridge target that
-    # changes name between deploys cannot be documented or scripted. An explicit
-    # `name:` also wins over `docker compose -p`, which is why the verification
-    # stack overrides it through CLEMENTI_NETWORK_NAME instead of relying on its
-    # own `-p` (scripts/verify-container-stack.mjs) — otherwise a verification
-    # run on the production host would join the production network.
-    name: ${CLEMENTI_NETWORK_NAME:-321clementi-parking_clementi}
+    # changes name between deploys cannot be documented or scripted.
+    #
+    # A literal `name:` also wins over `docker compose -p`, so `-p` alone no
+    # longer isolates anything. Isolation for verification therefore comes from
+    # docker-compose.verify.yml, which pins this same network to
+    # `321clementi-parking-verify_clementi`; CI asserts both names. Do not make
+    # this value overridable from an env var: Coolify's environment panel would
+    # then be a live knob on the production network name, and CI only checks the
+    # default.
+    name: 321clementi-parking_clementi
     driver: bridge

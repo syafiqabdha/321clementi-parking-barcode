@@ -51,7 +51,9 @@ const ENV_FILE = join(TMP, 'verify.env');
 // `name: 321clementi-parking`, and this script tears the stack down with
 // `down -v` — so without a separate project it would operate on the production
 // stack and DELETE the live `pgdata` volume. NEVER drop the `-p` below, and
-// never point VERIFY_PROJECT at the deployed project.
+// never point VERIFY_PROJECT at the deployed project. The network needs the same
+// treatment, and gets it from docker-compose.verify.yml's own `name:` pin —
+// `-p` alone cannot isolate it (see the note there).
 const PRODUCTION_PROJECT = '321clementi-parking';
 const PROJECT = process.env.VERIFY_PROJECT ?? `${PRODUCTION_PROJECT}-verify`;
 if (PROJECT === PRODUCTION_PROJECT) {
@@ -66,10 +68,11 @@ if (PROJECT === PRODUCTION_PROJECT) {
 // real database. Secrets are obviously fake so they cannot be mistaken for real
 // ones if this file ever leaks into a log.
 //
-// CLEMENTI_NETWORK_NAME is here because `docker-compose.yml` pins the network
-// name, and an explicit `name:` beats `-p`: without this override a verification
-// run on the production host would create — or worse, join — the production
-// network instead of an isolated one.
+// No network override here on purpose: docker-compose.verify.yml pins
+// `networks.clementi.name` to its own value, and an explicit name beats `-p`.
+// Keeping the isolation in the overlay — rather than in an env var — is what
+// makes the runbook's §5 command safe as written and keeps the production
+// network name out of reach of any environment variable.
 writeFileSync(ENV_FILE, [
   `POSTGRES_USER=${DB_USER}`,
   `POSTGRES_PASSWORD=${DB_PASS}`,
@@ -77,7 +80,6 @@ writeFileSync(ENV_FILE, [
   `PLATE_HMAC_SECRET=${'a'.repeat(64)}`,
   `ADMIN_API_KEY=${'b'.repeat(64)}`,
   `ALLOWED_SITE_DOMAINS=${SITE_HOST}`,
-  `CLEMENTI_NETWORK_NAME=${PROJECT}_clementi`,
   `WEB_HOST_PORT=${WEB_PORT}`,
   `IMAGE_TAG=${IMAGE_TAG}`,
   '',

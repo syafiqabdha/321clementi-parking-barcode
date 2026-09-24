@@ -21,6 +21,12 @@
 #
 # Always pass an explicit `-p`. Without it this overlay joins the *production* project
 # name, and a later `down -v` would delete the deployed volume.
+#
+# The network needs its own pin as well: `docker-compose.yml` sets a literal
+# `networks.clementi.name`, and an explicit name beats `-p`, so a project name alone would
+# still put this throwaway database on the PRODUCTION network (`321clementi-parking_clementi`)
+# alongside the real `db` alias. The block at the bottom of this file is what keeps the
+# verification stack on its own network, and CI asserts both names.
 # ---------------------------------------------------------------------------
 services:
   web:
@@ -44,3 +50,14 @@ services:
   db:
     ports:
       - "127.0.0.1:${VERIFY_DB_PORT:-15432}:5432"
+
+# Isolation for the verification stack. `docker-compose.yml` pins the deployable network to
+# a literal name, which wins over `docker compose -p` — so without this override the
+# documented §5 command would attach a throwaway PostgreSQL container, aliased `db`, to the
+# production network, where it would contend with the live database and its `down -v`
+# teardown would delete a volume the operator never expects to be touched. Pinning it here
+# (rather than through an env var in the deployable file) means the command in §5 is safe
+# exactly as written and no Coolify environment variable can rename the production network.
+networks:
+  clementi:
+    name: 321clementi-parking-verify_clementi
