@@ -256,13 +256,39 @@ pool.
   at `up -d` with `dependency failed to start: container … is unhealthy`. Two things now prevent a
   repeat: the healthcheck expands `$$POSTGRES_USER` / `$$POSTGRES_DB` **inside the container** and
   quotes them, so host-side interpolation can never break it; and an unset variable becomes a
-  default or empty value instead of the message text, which the containers reject loudly
-  (postgres will not initialise without `POSTGRES_PASSWORD`, the app throws without
-  `DATABASE_URL`, admin endpoints deny every request without `ADMIN_API_KEY`). A first boot with
-  the wrong values still poisons `pgdata`, so verify the panel *before* the first `up -d`.
-- **A `POSTGRES_PASSWORD` containing `@`, `:` or `/` breaks `DATABASE_URL`.** The URL is assembled
-  by string interpolation, so those characters must be percent-encoded. Use an alphanumeric
-  password (e.g. `openssl rand -hex 32`) or set `DATABASE_URL` explicitly.
+  default or empty value instead of the message text. A first boot with the wrong values still
+  poisons `pgdata` — `POSTGRES_USER` and `POSTGRES_DB` are only read by `initdb`, so a volume
+  created during a bad deploy keeps the wrong role and database names permanently. If a deploy
+  failed this way, delete the volume (`docker volume rm <project>_pgdata`, or Coolify → Storages)
+  before retrying; a plain re-deploy reuses the poisoned data directory.
+- **Neither healthcheck can detect wrong database credentials — verify with the app after deploying.**
+  `pg_isready` only asks whether the server accepts connections, and it does not authenticate.
+  The `db` container cannot check credentials either: the official `postgres:16-alpine` image
+  ships `trust` in `pg_hba.conf` for `local`, `127.0.0.1/32` and `::1/128`, with `scram-sha-256`
+  only for other hosts — so any probe running *inside* that container (including `psql`) is
+  trusted regardless of the password. And the `web` healthcheck is liveness-only by design: a
+  DB-backed probe would fail on a fresh volume until `db:migrate` has run, and Coolify deploys
+  with a single `up -d`. Net effect: an empty `POSTGRES_PASSWORD` is refused loudly by postgres on
+  a *fresh* volume, but on an *existing* volume postgres ignores the variable entirely, both
+  containers report healthy, and every DB-backed request returns 500. So after deploying, confirm
+  the app can actually read the database:
+
+  ```bash
+  docker compose exec web sh -c 'wget -q -O - http://127.0.0.1:4321/api/v1/shops | head -c 120'
+  ```
+
+  `{"success":true,…}` means the credentials work; `{"success":false,"error":"INTERNAL_ERROR"}`
+  means the app cannot read the database even though both containers say healthy. A cleaner fix,
+  worth doing separately: have `web` run `db:migrate` on start (or as a Coolify pre-deployment
+  command) and then make its healthcheck DB-backed.
+- **A `POSTGRES_PASSWORD` containing `@`, `:` or `/` breaks the constructed `DATABASE_URL`.** Those
+  characters must be percent-encoded. Use an alphanumeric password (e.g. `openssl rand -hex 32`),
+  or set `DATABASE_URL` explicitly in the panel — the compose value is only a default
+  (`${DATABASE_URL:-…}`), so an explicit override now wins.
+- **`PLATE_HMAC_SECRET` is currently vestigial.** No application code reads it (`git grep
+  PLATE_HMAC_SECRET -- src/` is empty; only the verification script sets a dummy value) — vehicle
+  plates were dropped from the schema in migration 0005. It is kept so existing `.env` files and
+  the documented panel values stay valid, and it is no longer required for the app to boot.
 - **The bot-challenge gate has been removed.** `POST /api/v1/redemptions` no longer reads
   `cf-turnstile-response`, and the portal never rendered the Turnstile widget anyway — the
   server required a token no client could supply, so every production submission failed with

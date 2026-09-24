@@ -39,7 +39,11 @@ services:
       # --- database -------------------------------------------------------
       # `db` is the compose service name — the container reaches it over the
       # internal network. Do NOT point this at a published host port.
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-clementi}:${POSTGRES_PASSWORD:-}@db:5432/${POSTGRES_DB:-clementi_redemption}"
+      # `:-` not `:?` (see the note on the db service). Setting DATABASE_URL
+      # explicitly in the platform's Environment Variables panel therefore still
+      # wins over this constructed default — which is the escape hatch for a
+      # POSTGRES_PASSWORD containing characters that would break the URL.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-clementi}:${POSTGRES_PASSWORD:-}@db:5432/${POSTGRES_DB:-clementi_redemption}}
       # Bun SQL pool ceiling. One web replica against PG's default
       # max_connections=100 leaves ample headroom.
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
@@ -87,6 +91,13 @@ services:
         condition: service_healthy
 
     healthcheck:
+      # Liveness only: `/` is prerendered and does not touch the database. A
+      # DB-backed probe is deliberately NOT used here — on a fresh volume the
+      # schema does not exist until `db:migrate` has run, and Coolify deploys
+      # with a single `up -d`, so a schema-dependent probe would report the web
+      # container unhealthy and fail a first deployment. Credential failures are
+      # therefore caught by the post-deploy check in the runbook instead. See
+      # docs/operations/COOLIFY_DEPLOYMENT.md §6.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4321/"]
       interval: 15s
       timeout: 5s
