@@ -96,6 +96,51 @@ jobs:
           docker compose --profile nocodb config --quiet
           echo 'compose configuration valid (default and nocodb profiles)'
 
+          # Port-exposure guard. The deployable file must publish NOTHING on the
+          # host: a published mapping bypasses Traefik and the Cloudflare Tunnel,
+          # which drops the WAF and strips `cf-connecting-ip` — the header
+          # src/utils/rate-limiter.ts trusts for per-client bucketing. Only the
+          # never-deployed verification overlay may publish a port, and only on
+          # loopback. Regression guard for the PAN-109 security review; a
+          # `-p 4321:4321`-style default previously slipped past `config --quiet`.
+          docker compose config --format json > /tmp/base.json
+          docker compose --profile nocodb config --format json > /tmp/nocodb.json
+          docker compose -f docker-compose.yml -f docker-compose.verify.yml \
+            config --format json > /tmp/verify.json
+
+          python3 - <<'PY'
+          import json, sys
+
+          def services(path):
+              with open(path) as fh:
+                  return json.load(fh).get('services', {})
+
+          failed = False
+          for label, path in (
+              ('docker-compose.yml', '/tmp/base.json'),
+              ('docker-compose.yml --profile nocodb', '/tmp/nocodb.json'),
+          ):
+              for name, svc in services(path).items():
+                  for port in (svc.get('ports') or []):
+                      print(f'::error file=docker-compose.yml::service {name} '
+                            f'publishes {port} — the deployable file must publish '
+                            f'no host port (use docker-compose.verify.yml)')
+                      failed = True
+
+          for name, svc in services('/tmp/verify.json').items():
+              for port in (svc.get('ports') or []):
+                  if port.get('host_ip') != '127.0.0.1':
+                      print(f'::error file=docker-compose.verify.yml::service {name} '
+                            f'publishes {port} on all interfaces — verification '
+                            f'port mappings must be bound to 127.0.0.1')
+                      failed = True
+
+          if failed:
+              sys.exit(1)
+          print('port-exposure guard OK — deployable file publishes no host port; '
+                'verification overlay is loopback-only')
+          PY
+
       # Builds the production image, boots PostgreSQL 16 + the web container,
       # applies migrations 0001–0005 from inside the runtime image, then drives a
       # real receipt -> voucher -> barcode redemption and a duplicate rejection.

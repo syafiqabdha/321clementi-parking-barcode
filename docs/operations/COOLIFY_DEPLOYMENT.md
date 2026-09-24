@@ -36,15 +36,24 @@ same image is deliberate — the applied schema can never drift from the code th
    Astro evaluates its CSRF origin allowlist during `bun run build`, so changing it
    requires a rebuild. Omitting the real hostname makes every form POST fail with
    `403 Cross-site POST form submissions are forbidden`.
-3. **Leave `WEB_HOST_PORT` unset on Coolify.** Publishing a host port bypasses Traefik and
-   the Cloudflare Tunnel; let the Coolify proxy own ingress for the assigned domain
-   (Cloudflare Tunnel → Coolify/Traefik → `web:4321`).
+3. **Publish no host port for `web` or `nocodb`.** `docker-compose.yml` deliberately has no
+   `ports:` mapping on either service: ingress is the Coolify/Traefik proxy's job via the
+   domain assigned to the service (Cloudflare Tunnel → Coolify/Traefik → `web:4321`). CI
+   enforces this. A published mapping bypasses Traefik and the Tunnel, which drops the
+   Cloudflare WAF and strips `cf-connecting-ip` — the header step 4 depends on. The only
+   published port in this repository is in `docker-compose.verify.yml`, bound to
+   `127.0.0.1` and never deployed. On `ewsvr-ubuntu` that also matters practically: `:4321`
+   is already held by another process and `:8080` by `coolify-proxy`, so a published
+   mapping there would fail to start and collide.
 4. **Cloudflare Tunnel and client IPs:** `getClientIp()` prefers `cf-connecting-ip`, which
    Cloudflare sets on every proxied request, so the 3-per-5-minute rate limiter buckets
    real shoppers. Only if that header is absent does it fall back to the rightmost
-   `x-forwarded-for` entry — which is Traefik's own address, collapsing every shopper into
-   one bucket. Keep the app behind the Cloudflare Tunnel, and verify the header before
-   opening a promotion window.
+   `x-forwarded-for` entry, which a direct caller fully controls — so anyone able to reach
+   the host's `:80`/`:443` directly could bypass the redemption rate limit entirely. Keep
+   the app behind the Tunnel, and confirm the host firewall blocks inbound `80`/`443` (and
+   `8080`) on the machine's public/Tailscale interfaces. On `ewsvr-ubuntu`, Coolify's
+   Traefik publishes all three on every interface, so that guarantee is the firewall's to
+   provide, not the compose file's.
 
 ## 3. Deploy
 
@@ -59,19 +68,38 @@ docker compose run --rm web bun run db:status      # expect 5 APPLIED / 0 PENDIN
 
 # 3. Post-migration hardening (idempotent, safe to re-run)
 # 0004 adds the 10-digit voucher CHECK constraint as NOT VALID so it does not scan a
-# large pool at migration time. Validate it once legacy rows are clean:
+# large pool at migration time. Validate it once legacy rows are clean. This takes
+# SHARE UPDATE EXCLUSIVE: concurrent reads and writes keep flowing and only competing
+# DDL blocks, so it is safe to run online — do it in the same window as go-live, since
+# until it runs the pool's numeric invariant is unproven.
 docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c 'ALTER TABLE voucher_pool VALIDATE CONSTRAINT ck_voucher_pool_voucher_code_numeric_10;'
 
 # 4. Least-privilege role for the NocoDB data source
-docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -v mall_ops_password="$MALL_OPS_DB_PASSWORD" \
-  -v mall_ops_db="$POSTGRES_DB" \
-  -f - < scripts/nocodb-db-roles.sql
+# The password goes through stdin, never as an argv value: `psql -v mall_ops_password=…`
+# would expose it to every local user in `ps -ef` and in shell history. The first line
+# of the stream is the password, the rest is the script.
+{ printf '%s\n' "$MALL_OPS_DB_PASSWORD"; cat scripts/nocodb-db-roles.sql; } \
+  | docker compose exec -T db sh -c '
+      IFS= read -r __pw
+      psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+        -v mall_ops_db="$POSTGRES_DB" -v mall_ops_password="$__pw" -f -'
 
 # 5. Start the application
 docker compose up -d web
 docker compose ps      # web must report (healthy)
+
+# 6. Post-deploy smoke test through the PUBLIC hostname — do this before announcing.
+# The CSRF origin check compares `Origin` with the origin Astro derives from
+# x-forwarded-proto / x-forwarded-host / Host. cloudflared → Traefik is plain HTTP, so if
+# the container ends up seeing `http` the derived origin is http://… and every same-site
+# form POST is rejected with `403 Cross-site POST form submissions are forbidden`.
+# ALLOWED_SITE_DOMAINS entries are deliberately protocol-agnostic to survive that; this
+# check proves it end to end.
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://<production-hostname>/api/v1/redemptions" \
+  -H 'Content-Type: application/json' -H "Origin: https://<production-hostname>" \
+  --data '{"receiptNumber":"SMOKE-TEST","shopId":1}'
+# Expect a validation/verification error (400/409/422) — anything but 403.
 ```
 
 ### Rollback
@@ -92,6 +120,11 @@ Verified behaviour of `db:rollback` on `0005`:
   `SG-UNKNOWN`, then recreates a UNIQUE index on `(vehicle_plate, receipt_date)`. Any two
   same-day plate-less redemptions therefore make 0005 un-rollbackable until those rows are
   reconciled. Treat 0005 as forward-only once plate-less redemptions exist in volume.
+
+**For 0005 the pre-committed recovery path is an image revert, not `db:rollback`.** Because
+the rollback can legitimately fail for data reasons, do not leave that decision to be made
+live: pin `IMAGE_TAG` to the previous build and recreate `web`. Use `db:rollback` for
+0001–0004, which have no data-dependent failure mode.
 
 ## 4. NocoDB connection parameters and table linkage
 
@@ -161,10 +194,19 @@ succeeds, while flipping its `status` and writing `vehicle_plate_hash` both fail
 bun scripts/verify-container-stack.mjs
 
 # NocoDB integration + least-privilege negative tests (see script header for env vars)
+#
+# The database publishes no host port, so the probes need the loopback-only mapping
+# the verification overlay adds. Run the stack through the overlay, otherwise
+# `@db:5432` resolves only inside the compose network and the host cannot reach it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d db
 NOCODB_URL=https://nocodb.pancatz.com \
 XC_TOKEN=<nocodb-api-token> \
-MALL_OPS_DATABASE_URL=postgresql://mall_operations:$MALL_OPS_DB_PASSWORD@db:5432/$POSTGRES_DB \
+MALL_OPS_DATABASE_URL=postgresql://mall_operations:***@127.0.0.1:15432/$POSTGRES_DB \
   ./scripts/deploy-nocodb-config.sh
+#
+# The password is passed via MALL_OPS_DATABASE_URL only as an exported environment
+# variable — never as a psql argv value, which would expose it in `ps -ef`.
 
 # Application test suite (unchanged, must stay green)
 bun install --frozen-lockfile && bun run typecheck && bun test
@@ -256,4 +298,20 @@ docker exec <web-container-name> wget -q -S -O /dev/null "$N8N_RECEIPT_VERIFIER_
 # 3. the redemption path with a mock verifier still allocates a voucher
 bun scripts/verify-container-stack.mjs
 ```
+
+## 8. Security posture — accepted trade-offs
+
+Reviewed in the PAN-109 security review; recorded so the next operator does not have to
+re-litigate them.
+
+| Item | Posture |
+|---|---|
+| Host port exposure | None. `web` and `nocodb` publish nothing; the CI port-exposure guard fails the build if that regresses. |
+| Container hardening | `web` runs non-root with `cap_drop: [ALL]` and `no-new-privileges`; `nocodb` gets `no-new-privileges` only — upstream runs it as root and its startup has not been audited for capability requirements. Both cap `json-file` logs at 10 MB × 3 so a colocated stack cannot fill the host disk. |
+| NocoDB image | Pinned to `nocodb/nocodb:2026.09.0` — the release the least-privilege boundary was calibrated against. |
+| Secret handling | No secret is passed as an argv value anywhere in this runbook; the role-provisioning password reaches `psql` on stdin (§3 step 4). |
+| DB authentication | `postgres:16-alpine` ships `trust` for loopback **inside** the `db` container and `scram-sha-256` for everything else, so `web` and `nocodb` are password-authenticated over the compose network. Consequence: `docker compose exec db psql -U mall_operations …` succeeds with no password, so it cannot be used to test the role's password — connect from another container on the `clementi` network instead. Verified: correct password accepted, wrong password returns `FATAL: password authentication failed`. |
+| NocoDB admin trust | `NC_ALLOW_LOCAL_EXTERNAL_DBS=true` is required for the private-network data source. It also lets a NocoDB super-admin point a new source at arbitrary private hosts from inside the compose network. Accepted: NocoDB admins are trusted mall-operations staff. |
+| Rate-limiter buckets | In-process `Map`s — they reset on restart/redeploy and are not shared across replicas. Correct for the single `web` replica this stack defines; horizontal scaling needs a shared store first. |
+| `ALLOWED_SITE_DOMAINS` scope | The production image trusts exactly the hostnames in this variable plus `localhost`/`127.0.0.1`. The `*.vercel.app` wildcard is only compiled in when `DEPLOY_TARGET=vercel`. |
 

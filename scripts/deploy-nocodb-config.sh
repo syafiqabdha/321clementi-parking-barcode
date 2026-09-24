@@ -177,10 +177,34 @@ else
     # script is idempotent and never plants a probe voucher in the live pool.
     probe() {
       local label="$1" sql="$2" expect="$3" out rc
+
+      # Credentials never travel as an argv value: `psql "$URL"` — or
+      # `docker run … psql "$URL"` — puts the role password in the host's
+      # `ps -ef` and in shell history. Split the URL once; the password reaches
+      # the child on stdin (docker) or in its environment (native psql), neither
+      # of which appears in argv.
+      local __rest __creds __hostpart __hp mo_user mo_pass mo_host mo_port mo_db
+      __rest="${MALL_OPS_DATABASE_URL#*://}"
+      __creds="${__rest%%@*}"
+      __hostpart="${__rest#*@}"
+      mo_user="${__creds%%:*}"
+      case "$__creds" in *:*) mo_pass="${__creds#*:}" ;; *) mo_pass='' ;; esac
+      __hp="${__hostpart%%/*}"
+      mo_db="${__hostpart#*/}"
+      mo_host="${__hp%:*}"
+      mo_port="${__hp##*:}"
+      case "$mo_port" in '' | *[!0-9]*) mo_port=5432 ;; esac
+
       if [ "$PSQL_MODE" = 'native' ]; then
-        out="$(psql "$MALL_OPS_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "BEGIN; ${sql} ROLLBACK;" 2>&1)"; rc=$?
+        out="$(PGPASSWORD="$mo_pass" psql -h "$mo_host" -p "$mo_port" -U "$mo_user" -d "$mo_db" \
+                 -v ON_ERROR_STOP=1 -tAc "BEGIN; ${sql} ROLLBACK;" 2>&1)"; rc=$?
       else
-        out="$(docker run --rm -i --network host postgres:16-alpine psql "$MALL_OPS_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc "BEGIN; ${sql} ROLLBACK;" 2>&1)"; rc=$?
+        out="$(printf '%s\n' "$mo_pass" \
+          | docker run --rm -i --network host postgres:16-alpine sh -c '
+              IFS= read -r PGPASSWORD
+              export PGPASSWORD
+              exec psql -h "$1" -p "$2" -U "$3" -d "$4" -v ON_ERROR_STOP=1 -tAc "$5"
+            ' sh "$mo_host" "$mo_port" "$mo_user" "$mo_db" "BEGIN; ${sql} ROLLBACK;" 2>&1)"; rc=$?
       fi
       if [ "$expect" = 'allow' ]; then
         if [ $rc -eq 0 ]; then pass "$label"; else fail "$label" "expected success, got: $(printf '%s' "$out" | head -c 200)"; fi
