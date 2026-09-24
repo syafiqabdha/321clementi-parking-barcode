@@ -4,6 +4,7 @@
 - **Target:** self-hosted Coolify, Docker Compose runtime, PostgreSQL 16, NocoDB admin UI
 - **Blast radius:** every command below is intended to be run **manually by the systems
   architect**. Nothing in this repository touches live Coolify infrastructure on its own.
+- **Host-specific facts for ewsvr-ubuntu — read §7 first.**
 
 ## 1. What ships
 
@@ -185,3 +186,74 @@ pool.
 - **BuildKit.** This host has no `docker buildx`; the Dockerfile intentionally avoids
   BuildKit-only syntax so `DOCKER_BUILDKIT=0 docker build .` works. `docker compose build`
   needs BuildKit — use `docker build` on such a host.
+
+## 7. Live execution on ewsvr-ubuntu — verified host facts
+
+Read this before running §3. Everything below was observed read-only on the target host
+(10.1.0.99 / Tailscale 100.67.166.37) on 2026-09-24; no live resource was created, modified
+or restarted.
+
+### 7.1 What already runs there
+
+| Container | Image | Role |
+|---|---|---|
+| `coolify` / `coolify-db` / `coolify-redis` / `coolify-realtime` / `coolify-sentinel` | — | Coolify control plane, UI on `localhost:8000` |
+| `coolify-proxy` | Coolify Traefik | Public ingress on `:80` / `:443` / `:8080` |
+| `cloudflared-i8lsm19arq8z3g2lnpwi8nhx` | `cloudflare/cloudflared:latest` | Cloudflare Tunnel terminating into Traefik |
+| `nocodb-fbvelpdaf5kwl9im9qyr4i4u` | `nocodb/nocodb` | **Existing** NocoDB — Coolify service `nocodb`, project `main`, alias `nocodb`, served at `https://nocodb.pancatz.com` (HTTP 200) |
+| `n8n-ynerrvhzq9y5gmgnagzld6j8` | `n8nio/n8n` | Existing n8n — service `n8n`, project `main`, alias `n8n`, `https://n8n.pancatz.com` (HTTP 200) |
+| `postgresql-ynerrvhzq9y5gmgnagzld6j8` | `postgres:17-alpine` (17.11) | **n8n's own database** (`POSTGRES_DB=n8n`) |
+
+**Do not reuse `postgresql-…` for this application.** It is PostgreSQL **17** and carries
+n8n's data. The issue calls for a dedicated PostgreSQL 16 container, which is what the `db`
+service in `docker-compose.yml` provides.
+
+**Do not start a second NocoDB.** The `nocodb` profile in `docker-compose.yml` is for hosts
+without one. Here, point the existing Coolify service at the new database instead (§4).
+
+### 7.2 The application hostname does not exist yet
+
+`321clementi.pancatz.com` does not resolve, and no tunnel hostname currently answers for it.
+**Decide the production hostname before building the image** — `ALLOWED_SITE_DOMAINS` is
+evaluated at build time, so a hostname chosen afterwards forces a rebuild. Then add the
+Cloudflare Tunnel hostname → Coolify domain for the `web` service.
+
+### 7.3 n8n routing for local event callbacks
+
+`http://n8n:5678/healthz` returns **HTTP 200** from a container attached to the Coolify
+project network `ynerrvhzq9y5gmgnagzld6j8` (the network carrying `coolify-proxy`, `n8n`,
+`postgresql`, `nocodb`). Two options for `N8N_RECEIPT_VERIFIER_URL`:
+
+- **Public (default, zero coupling):** `https://n8n.pancatz.com/webhook/<path>` — verified
+  reachable, but the request hairpins out to Cloudflare and back.
+- **Internal (lower latency, coupled):** attach the web container to the project network and
+  use `http://n8n:5678/webhook/<path>`:
+
+  ```bash
+  docker network connect ynerrvhzq9y5gmgnagzld6j8 <web-container-name>
+  # rollback:  docker network disconnect ynerrvhzq9y5gmgnagzld6j8 <web-container-name>
+  ```
+
+  A `docker network connect` does not survive a Coolify redeploy (the container is
+  recreated), and the network name is Coolify-generated — if the n8n service is ever
+  recreated, re-check `docker inspect <n8n> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'`.
+
+**Dead configuration.** `PUBLIC_REDEMPTION_WEBHOOK_URL` and `N8N_WEBHOOK_URL` are read by no
+code path in this repository — the portal makes no browser-to-n8n call, and all verification
+runs server-side in the Astro API routes. Only `N8N_RECEIPT_VERIFIER_URL` (n8n override) and
+`GEMINI_API_KEY` affect receipt verification. Keep them set for documentation value, but do
+not treat them as a routing requirement.
+
+### 7.4 Verifying webhook routing end to end
+
+```bash
+# 1. n8n itself is up
+curl -s -o /dev/null -w '%{http_code}\n' https://n8n.pancatz.com/healthz
+
+# 2. the app container can reach the verifier URL it was configured with
+docker exec <web-container-name> wget -q -S -O /dev/null "$N8N_RECEIPT_VERIFIER_URL" 2>&1 | head -3
+
+# 3. the redemption path with a mock verifier still allocates a voucher
+bun scripts/verify-container-stack.mjs
+```
+
