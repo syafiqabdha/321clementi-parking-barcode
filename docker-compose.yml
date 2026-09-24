@@ -60,12 +60,9 @@ services:
 
       # --- public (browser-visible) ---------------------------------------
       PUBLIC_REDEMPTION_WEBHOOK_URL: ${PUBLIC_REDEMPTION_WEBHOOK_URL:-https://n8n.pancatz.com/webhook/clementi-redemption}
+      # Inert on this branch: the Turnstile gate was removed from the app, so
+      # neither key is read. Kept so an existing .env still validates.
       PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:-}
-
-      # --- anti-bot (Turnstile) -------------------------------------------
-      # In production the redemption endpoint FAILS CLOSED when this is empty —
-      # every submission is rejected with BOT_CHALLENGE_FAILED. Set it, or run
-      # the smoke environment with NODE_ENV=development.
       CLOUDFLARE_TURNSTILE_SECRET_KEY: ${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
 
       # --- admin UI reference ---------------------------------------------

@@ -166,38 +166,3 @@ export function checkRedemptionRateLimit(ip: string): { allowed: boolean; retryA
   bucket.count++;
   return { allowed: true };
 }
-
-/**
- * Validate a Cloudflare Turnstile token against the siteverify API.
- * Returns true when the token is valid. Always false when the secret key is missing.
- */
-export async function verifyTurnstileToken(
-  token: string | null,
-  remoteIp: string
-): Promise<{ success: boolean; errorCodes?: string[] }> {
-  const secret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-  if (!secret) {
-    // In development without Turnstile configured: bypass (fail-open only in dev)
-    if (process.env.NODE_ENV !== 'production') return { success: true };
-    return { success: false, errorCodes: ['missing-secret-key'] };
-  }
-  if (!token) return { success: false, errorCodes: ['missing-input-response'] };
-
-  try {
-    const body = new URLSearchParams({
-      secret,
-      response: token,
-      remoteip: remoteIp,
-    });
-    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal: AbortSignal.timeout(5_000),
-    });
-    const data = await resp.json() as any;
-    return { success: data.success === true, errorCodes: data['error-codes'] };
-  } catch {
-    return { success: false, errorCodes: ['network-error'] };
-  }
-}

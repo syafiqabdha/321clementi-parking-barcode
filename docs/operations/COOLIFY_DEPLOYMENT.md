@@ -242,8 +242,14 @@ pool.
 
 ## 6. Known caveats
 
-- **Turnstile fails closed.** With `CLOUDFLARE_TURNSTILE_SECRET_KEY` unset in production,
-  every redemption is rejected with `BOT_CHALLENGE_FAILED`. Set both Turnstile keys.
+- **The bot-challenge gate has been removed.** `POST /api/v1/redemptions` no longer reads
+  `cf-turnstile-response`, and the portal never rendered the Turnstile widget anyway — the
+  server required a token no client could supply, so every production submission failed with
+  `BOT_CHALLENGE_FAILED`. Both Turnstile variables are now inert; the earlier "set both keys
+  or every redemption fails" caveat no longer applies. What remains of Gate 1 is the honeypot
+  and the 1500ms timing gate (both server-side), plus the per-IP rate limit (3 per 5 min). Do
+  not restore the server-side check on its own: without the client widget every submission
+  fails again.
 - **Prerender regression guard.** If `output: 'server'` or the adapter is ever removed from
   `astro.config.mjs`, `astro build` silently prerenders the API routes and ships empty
   response bodies. `scripts/verify-container-stack.mjs` fails loudly on that.
