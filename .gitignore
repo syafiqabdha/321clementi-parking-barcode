@@ -3,6 +3,9 @@ dist/
 .astro/
 .temp/
 
+# vercel
+.vercel/
+
 # dependencies
 node_modules/
 

@@ -21,6 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # On this branch astro.config.mjs defaults to the Vercel adapter, so the
+    # Docker/Node path must be requested explicitly — otherwise the assertions
+    # below would inspect a Vercel artifact and the Node build would go
+    # unchecked. `main` builds Node by default.
+    env:
+      DEPLOY_TARGET: node
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -65,6 +72,100 @@ jobs:
 
       - name: Run test suite
         run: bun test
+
+  # The serverless target produces a different artifact (`.vercel/output`), which
+  # the Node job above cannot see. This job builds and *runs* exactly what Vercel
+  # ships — see scripts/deploy-verify-smoke.mjs.
+  vercel:
+    name: Vercel Serverless Build & Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DEPLOY_TARGET: vercel
+      # Build-time CSRF allowlist (astro.config.mjs). A public hostname, not a
+      # secret — it is embedded in the emitted manifest, and the assertion below
+      # proves the plumbing resolved it instead of silently substituting
+      # `localhost`.
+      ALLOWED_SITE_DOMAINS: 321clementi.pancatz.com
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build for Vercel
+        run: bun run build
+
+      # `astro build` with the Vercel adapter emits the Build Output API v3 tree.
+      # A regression here is silent and fatal: without the adapter, or with a
+      # stray `outputDirectory` in vercel.json, Astro prerenders every API route
+      # at build time and Vercel serves a frozen build-time response instead of
+      # running the handler.
+      - name: Verify API routes are serverless-bound
+        run: |
+          set -euo pipefail
+          test -f .vercel/output/config.json
+          test -d .vercel/output/functions/_render.func
+          test -f .vercel/output/static/index.html
+          bun -e '
+            const cfg = await Bun.file(".vercel/output/config.json").json();
+            const expected = [
+              "^/api/v1/admin/shops/?$",
+              "^/api/v1/redemptions/history/?$",
+              "^/api/v1/redemptions/unclaim/?$",
+              "^/api/v1/redemptions/?$",
+              "^/api/v1/shops/?$",
+            ];
+            const dests = Object.fromEntries(
+              cfg.routes.filter((r) => r.src?.startsWith("^/api/")).map((r) => [r.src, r.dest])
+            );
+            const bad = expected.filter((k) => dests[k] !== "_render");
+            if (bad.length) {
+              console.error("API routes not bound to a serverless function:", bad);
+              process.exit(1);
+            }
+            console.log(`All ${expected.length} API routes are serverless-bound.`);
+          '
+
+      # `output: 'server'` also enables Astro's security.checkOrigin CSRF
+      # middleware, which derives this deployment's own origin from the
+      # x-forwarded-host header Vercel sends — but only for hostnames listed in
+      # security.allowedDomains. With an empty list Astro silently substitutes
+      # `localhost`, and every same-origin POST from a real domain is rejected
+      # with "403 Cross-site POST form submissions are forbidden".
+      - name: Verify CSRF origin allowlist is populated
+        run: |
+          set -euo pipefail
+          MANIFEST=$(ls .vercel/output/functions/_render.func/dist/server/manifest_*.mjs)
+          if ! grep -q '"allowedDomains":\[{' "$MANIFEST"; then
+            echo "::error::security.allowedDomains resolved to an empty list — Astro will treat this deployment's own origin as localhost and reject every same-origin POST with '403 Cross-site POST form submissions are forbidden'."
+            echo "Fix security.allowedDomains in astro.config.mjs."
+            exit 1
+          fi
+          echo "allowedDomains: $(grep -o '"allowedDomains":\[[^]]*\]' "$MANIFEST")"
+
+      - name: Pre-pull test database image
+        run: docker pull postgres:16-alpine
+
+      # The gates above only inspect artifacts. This one runs the artifact: it
+      # boots the built function under the real Node runtime with Vercel's
+      # forwarded headers and asserts a same-origin form POST is not 403. That
+      # is the only check that exercises the CSRF origin path end to end, and
+      # it also covers POST /api/v1/redemptions, which no unit test imports.
+      #
+      # Also proves the `postgres` driver works on the Node runtime: the unit
+      # suite runs under Bun, which ships its own SQL client and cannot catch a
+      # Bun-only code path.
+      - name: Serverless deployment smoke test
+        run: bun run verify:deploy
 
   container:
     name: Container & Deployment Manifests

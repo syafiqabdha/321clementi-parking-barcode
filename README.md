@@ -154,7 +154,44 @@ bun test
 ## Deployment & Infrastructure
 
 ### Production Deployment (Vercel)
-The mobile web portal is deployed to Vercel as a static Astro 5 build configured via [`vercel.json`](./vercel.json).
+
+This branch — `vercel` — is the Vercel deployment target. It builds the portal as an
+**on-demand rendered Astro 5 app** through the
+[`@astrojs/vercel`](https://docs.astro.build/en/guides/integrations-guide/vercel/) adapter
+(`output: 'server'`), so `main` stays the Coolify/Docker target and neither branch has to
+choose between them at runtime.
+
+- `astro.config.mjs` defaults `DEPLOY_TARGET` to `vercel` on this branch (`node` on `main`). The Dockerfile pins `DEPLOY_TARGET=node`, so the container path is unaffected.
+- `vercel.json` carries the install/build commands, the `sin1` function region, and the security/caching headers. It deliberately omits `outputDirectory`: the adapter writes the Build Output API v3 tree to `.vercel/output`, and declaring `dist` there makes Vercel serve the stale static build instead of the functions.
+- `/api/v1/**` — five request-time handlers bundled into one Vercel Function (`_render`), using the `postgres` npm driver (Bun's SQL client cannot resolve on the Node runtime).
+- `/` — prerendered to a static file and served from the CDN (`export const prerender = true` in `src/pages/index.astro`).
+- `sin1` (Singapore) is **requested, not confirmed**: `@astrojs/vercel` emits no region into `.vercel/output/functions/_render.func/.vc-config.json`, so it depends on Vercel applying `vercel.json`. Check with `vercel inspect <deployment-url>` after the first deploy, and keep the database in the same region either way.
+
+Astro's `checkOrigin` CSRF middleware derives this deployment's own origin from the
+`x-forwarded-host` header Vercel sets, and only for hostnames in `security.allowedDomains`.
+An empty list silently falls back to `localhost` and rejects every same-origin POST with
+`403 Cross-site POST form submissions are forbidden`. Add a custom domain through the
+`ALLOWED_SITE_DOMAINS` **build** variable rather than by editing the config.
+
+CI runs three jobs on this branch: `ci` (Node/Docker build, pinned to `DEPLOY_TARGET=node`),
+`vercel` (builds the Build Output API tree, asserts the five API routes are
+serverless-bound and that the CSRF allowlist is populated, then runs the smoke test), and
+`container` (compose validation, port-exposure guard, container stack).
+
+#### Deployment smoke test
+
+CI's artifact gates only inspect files; this one runs the artifact:
+
+```bash
+bun run build && bun run verify:deploy
+```
+
+It boots `.vercel/output/functions/_render.func` under the real Node.js runtime against a
+throwaway PostgreSQL 16 container and a mock receipt verifier, then asserts that a
+same-origin form POST carrying Vercel's forwarded headers is **not** `403` (the CSRF
+allowlist regression guard), that the `postgres` driver returns live rows on Node, that
+`POST /api/v1/redemptions` allocates a voucher end to end, and that production fails closed
+without Turnstile. Requires Docker.
 
 #### Environment Variables
 
@@ -172,6 +209,9 @@ Copy `.env.example` to `.env` and populate every variable before running the app
 | `GEMINI_API_KEY` | ✅ | Backend | Google Gemini 1.5 Flash API key for AI receipt OCR verification (minimum $30 spend + date check). Obtain from [Google AI Studio](https://aistudio.google.com/app/apikey). | `AIza...` |
 | `CLOUDFLARE_TURNSTILE_SECRET_KEY` | ✅ | Backend | Cloudflare Turnstile server-side secret key for bot protection validation. Obtain from [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com). | `0x4AAAAAAA...` |
 | `PUBLIC_TURNSTILE_SITE_KEY` | ✅ | Frontend (public) | Cloudflare Turnstile client-side site key rendered in the browser widget. Obtain from the same Turnstile site entry as `CLOUDFLARE_TURNSTILE_SECRET_KEY`. | `0x4AAAAAAA...` |
+| `ALLOWED_SITE_DOMAINS` | Optional | Build config | Extra hostnames Astro should trust as this deployment's own origin, merged with the config defaults (`*.vercel.app`, `localhost`, `127.0.0.1`). **Build-time**: the value is baked into the emitted manifest, so it must be set in the Vercel build environment. Miss it and every same-origin redemption POST returns `403 Cross-site POST form submissions are forbidden`. | `321clementi.pancatz.com` |
+| `PG_POOL_MAX` | Optional | Backend | Connections per function instance. Defaults to `1` on Vercel — every warm instance holds its own pool, so a larger value multiplies connections against Postgres. | `1` |
+| `PG_PREPARE` | Optional | Backend | Set `true` **only** for direct/session-mode endpoints; must stay `false` (the default) behind a transaction-mode pooler, which cannot keep prepared statements alive between queries. | `false` |
 | `NOCODB_URL` | ✅ | Admin / DevOps | Base URL of the NocoDB instance used by mall management staff to update the `shops` table and by `deploy-nocodb-config.sh` for health checks. Must be `https://`. | `https://nocodb.pancatz.com` |
 | `N8N_RECEIPT_VERIFIER_URL` | Optional | Backend | If set, overrides the direct Gemini API call and routes receipt verification through an n8n workflow instead. Leave blank to use the Gemini SDK directly. | `https://n8n.pancatz.com/webhook/verify-receipt` |
 | `XC_TOKEN` | Optional | DevOps | NocoDB admin API token for `scripts/deploy-nocodb-config.sh` authenticated API checks. Only needed when running the deployment validation script. Obtain from NocoDB → Team & Auth → API Tokens. | `xc-token-...` |

@@ -203,12 +203,13 @@ describe('PAN-104 Criterion 3: single-receipt (not combined) copy', () => {
     expect(distHtml).not.toContain('id="vehicle-plate"');
   });
 
-  test('the redemption form submits receipt + shopId + timestamp only', async () => {
+  test('the redemption form submits receiptImage + shopId + form_rendered_at + turnstile', async () => {
     const card = await readFile(join(SRC, 'components', 'RedemptionCard.astro'), 'utf-8');
     const block = card.slice(card.indexOf('const formData = new FormData();'), card.indexOf('let voucherCode: string'));
-    expect(block).toContain("formData.append('receipt'");
+    expect(block).toContain("formData.append('receiptImage'");
     expect(block).toContain("formData.append('shopId'");
-    expect(block).toContain("formData.append('timestamp'");
+    expect(block).toContain("formData.append('form_rendered_at'");
+    expect(block).toContain("cf-turnstile-response");
     expect(block).not.toContain('vehiclePlate');
   });
 

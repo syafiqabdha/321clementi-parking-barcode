@@ -32,7 +32,12 @@ const extraDomains = (process.env.ALLOWED_SITE_DOMAINS ?? '')
     return scheme ? { hostname: host, protocol: scheme } : { hostname: host };
   });
 
-const target = process.env.DEPLOY_TARGET ?? 'node';
+// Branch note (the `vercel` deployment branch): this branch IS the Vercel target,
+// so the default flips to `vercel` — Vercel runs a bare `bun run build` and must
+// not depend on a dashboard env var to pick the right adapter. `main` keeps
+// `node` as its default (Coolify/Docker), and the Dockerfile pins
+// DEPLOY_TARGET=node, so the container path is unaffected on either branch.
+const target = process.env.DEPLOY_TARGET ?? 'vercel';
 
 const allowedDomains = [
   // The exact production hostname(s) from ALLOWED_SITE_DOMAINS (§Pre-flight),
