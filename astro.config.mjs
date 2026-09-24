@@ -21,24 +21,30 @@ const extraDomains = (process.env.ALLOWED_SITE_DOMAINS ?? '')
   .map((d) => d.trim())
   .filter(Boolean)
   .map((entry) => {
-    // Default to https — these are real deployment hostnames. An explicit
-    // scheme is honoured so a plain-http staging host stays possible.
-    const [scheme, host] = entry.includes('://') ? entry.split('://') : ['https', entry];
-    return { hostname: host, protocol: scheme };
+    // Protocol-agnostic by default. The proxy in front of this container
+    // (cloudflared → Traefik → web) may present the request as plain http even
+    // when the shopper used https, and Astro derives the CSRF origin from
+    // `x-forwarded-proto`/`x-forwarded-host`. Pinning `protocol: 'https'` here
+    // makes that comparison fail and returns
+    // `403 Cross-site POST form submissions are forbidden` on every redemption.
+    // An explicit scheme in the env value is still honoured.
+    const [scheme, host] = entry.includes('://') ? entry.split('://') : [undefined, entry];
+    return scheme ? { hostname: host, protocol: scheme } : { hostname: host };
   });
 
+const target = process.env.DEPLOY_TARGET ?? 'node';
+
 const allowedDomains = [
-  // Production + preview hosts behind Cloudflare Tunnel / Coolify's proxy.
-  { hostname: '*.pancatz.com', protocol: 'https' },
-  { hostname: 'pancatz.com', protocol: 'https' },
-  // Vercel preview aliases, kept so the Vercel build target still works.
-  { hostname: '*.vercel.app', protocol: 'https' },
-  // `bun run dev` / `astro preview` on http://localhost:4321 and a plain
-  // `docker compose up` smoke test — left protocol-agnostic so local http
-  // keeps working.
+  // The exact production hostname(s) from ALLOWED_SITE_DOMAINS (§Pre-flight),
+  // protocol-agnostic per the comment above.
+  ...extraDomains,
+  // Vercel preview aliases only when that target is actually being built. A
+  // wildcard here would widen the CSRF allowlist of the production image.
+  ...(target === 'vercel' ? [{ hostname: '*.vercel.app', protocol: 'https' }] : []),
+  // `bun run dev` / `astro preview` on http://localhost:4321 and the
+  // `docker compose` smoke test — protocol-agnostic so local http keeps working.
   { hostname: 'localhost' },
   { hostname: '127.0.0.1' },
-  ...extraDomains,
 ];
 
 // The five API routes under src/pages/api/** are request-time handlers (DB
@@ -50,8 +56,7 @@ const allowedDomains = [
 // The container build uses the Node standalone adapter (DEPLOY_TARGET=node, the
 // Dockerfile default). DEPLOY_TARGET=vercel uses the Vercel adapter when
 // `@astrojs/vercel` is installed, so one config serves both targets.
-const target = process.env.DEPLOY_TARGET ?? 'node';
-
+// (`target` is resolved above, before allowedDomains needs it.)
 let adapter;
 if (target === 'vercel') {
   const { default: vercel } = await import('@astrojs/vercel');

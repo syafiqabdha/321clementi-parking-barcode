@@ -17,6 +17,12 @@
  *   bun scripts/verify-container-stack.mjs            # build + verify + clean up
  *   VERIFY_KEEP=1 bun scripts/verify-container-stack.mjs   # leave the stack up
  *
+ * Safety: this script runs under its own compose project
+ * (`321clementi-parking-verify`; override with VERIFY_PROJECT). Its `down -v`
+ * teardown removes only that project's volumes, so it can run on a host that
+ * already has the production stack up without touching the live database. It
+ * refuses to start if VERIFY_PROJECT names the production project.
+ *
  * Requirements: docker, bun. Nothing else — no .env, no running database.
  */
 import { createServer } from 'node:http';
@@ -54,19 +60,32 @@ writeFileSync(ENV_FILE, [
   `ALLOWED_SITE_DOMAINS=${SITE_HOST}`,
   `NOCODB_URL=https://nocodb.pancatz.com`,
   `WEB_HOST_PORT=${WEB_PORT}`,
-  `NOCODB_HOST_PORT=18080`,
   `IMAGE_TAG=${IMAGE_TAG}`,
   '',
 ].join('\n'));
 
+// Verification runs under its OWN compose project. The deployable file sets
+// `name: 321clementi-parking`, and this script tears the stack down with
+// `down -v` — so without a separate project it would operate on the production
+// stack and DELETE the live `pgdata` / `nocodb-data` volumes. NEVER drop the
+// `-p` below, and never point VERIFY_PROJECT at the deployed project.
+const PRODUCTION_PROJECT = '321clementi-parking';
+const PROJECT = process.env.VERIFY_PROJECT ?? `${PRODUCTION_PROJECT}-verify`;
+if (PROJECT === PRODUCTION_PROJECT) {
+  console.error(
+    `[fatal] VERIFY_PROJECT=${PROJECT} is the production compose project. This script's ` +
+      `teardown runs \`down -v\` and would delete the live database volume. Refusing to run.`
+  );
+  process.exit(1);
+}
+
 const COMPOSE = [
   'compose',
+  '-p', PROJECT,
   '--env-file', ENV_FILE,
   '-f', join(ROOT, 'docker-compose.yml'),
   '-f', join(ROOT, 'docker-compose.verify.yml'),
 ];
-
-const PROJECT = '321clementi-parking';
 const DATABASE_URL = `postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}`;
 
 function sh(cmd, args, opts = {}) {
@@ -95,7 +114,7 @@ function check(label, cond, detail = '') {
 function cleanup() {
   if (KEEP) {
     console.log(`\n[keep] stack left running (VERIFY_KEEP=1) — stop with:\n` +
-      `  docker compose --env-file ${ENV_FILE} -f docker-compose.yml -f docker-compose.verify.yml down -v`);
+      `  docker compose -p ${PROJECT} --env-file ${ENV_FILE} -f docker-compose.yml -f docker-compose.verify.yml down -v`);
     return;
   }
   composeSoft('down', '-v', '--remove-orphans');
@@ -141,15 +160,23 @@ console.log(`[info] image size ${(Number(sizeRaw) / 1024 / 1024).toFixed(1)} MiB
 // ---------------------------------------------------------------------------
 console.log('\n=== 2. Start PostgreSQL 16 ===');
 compose('up', '-d', 'db');
-let dbReady = false;
+// Readiness must be an *authenticated query*, not `pg_isready`. During first
+// boot the postgres entrypoint runs initdb against a temporary server that also
+// answers pg_isready on the unix socket; it is then shut down and the real
+// server started. A pg_isready-based probe passes against that temporary server
+// and the next psql lands in the restart window with "No such file or directory".
+// Requiring a real query (and taking the version from it) has no such window.
+let pgVersion = '';
 for (let i = 0; i < 60; i++) {
-  const r = composeSoft('exec', '-T', 'db', 'pg_isready', '-U', DB_USER, '-d', DB_NAME);
-  if (r.status === 0) { dbReady = true; break; }
+  const r = composeSoft('exec', '-T', 'db', 'psql', '-U', DB_USER, '-d', DB_NAME, '-tAc', 'SHOW server_version;');
+  if (r.status === 0 && /^16\./.test((r.stdout ?? '').trim())) {
+    pgVersion = (r.stdout ?? '').trim();
+    break;
+  }
   sleep(1000);
 }
-check('PostgreSQL 16 container reports ready', dbReady);
-if (!dbReady) { cleanup(); process.exit(1); }
-const pgVersion = compose('exec', '-T', 'db', 'psql', '-U', DB_USER, '-d', DB_NAME, '-tAc', 'SHOW server_version;');
+check('PostgreSQL 16 is accepting authenticated queries', pgVersion !== '');
+if (!pgVersion) { cleanup(); process.exit(1); }
 check('server is PostgreSQL 16.x', /^16\./.test(pgVersion), pgVersion);
 console.log(`[info] server_version ${pgVersion}`);
 

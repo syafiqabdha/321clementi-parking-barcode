@@ -3,10 +3,19 @@
 --
 -- Run AFTER migrations 0001-0005, against the production database:
 --
---   psql "$DATABASE_URL" \
---     -v mall_ops_password="$(openssl rand -hex 24)" \
---     -v mall_ops_db="clementi_redemption" \
---     -f scripts/nocodb-db-roles.sql
+--   { printf '%s\n' "$MALL_OPS_DB_PASSWORD"; cat scripts/nocodb-db-roles.sql; } \
+--     | docker compose exec -T db sh -c '
+--         IFS= read -r MALL_OPS_DB_PASSWORD; export MALL_OPS_DB_PASSWORD
+--         exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+--           -v ON_ERROR_STOP=1 -v mall_ops_db="$POSTGRES_DB" -f -'
+--
+--   (or, with psql on the host:  MALL_OPS_DB_PASSWORD=... psql "$URL" \
+--      -v mall_ops_db=clementi_redemption -f scripts/nocodb-db-roles.sql)
+--
+-- The password is read from the MALL_OPS_DB_PASSWORD environment variable by
+-- the \getenv below, so it never has to appear in a command line. Passing
+-- -v mall_ops_password=... still works, but puts the secret in the psql
+-- process arguments.
 --
 -- Idempotent — safe to re-run; it re-asserts the grants every time.
 --
@@ -25,6 +34,12 @@
 -- ===========================================================================
 
 \set ON_ERROR_STOP on
+
+-- Take the role password from the environment when present, so the provisioning
+-- command never has to pass it as a psql argument (`-v mall_ops_password=...`
+-- shows up in `ps aux`). psql leaves the variable untouched if the environment
+-- variable is unset, so an explicit -v still overrides this.
+\getenv mall_ops_password MALL_OPS_DB_PASSWORD
 
 -- Role creation is not idempotent in plain SQL, so guard it.
 DO $$

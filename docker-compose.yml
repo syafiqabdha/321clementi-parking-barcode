@@ -71,12 +71,19 @@ services:
       # --- admin UI reference ---------------------------------------------
       NOCODB_URL: ${NOCODB_URL:-http://nocodb:8080}
 
-    ports:
-      # Coolify — leave WEB_HOST_PORT unset and let the Coolify proxy own
-      # ingress via the domain assigned to this service. A published host port
-      # would bypass Traefik and the Cloudflare Tunnel.
-      # Local/CI verification — WEB_HOST_PORT=4321 docker compose up -d web
-      - "${WEB_HOST_PORT:-4321}:4321"
+    # No published host port — by design, and load-bearing. Ingress is the
+    # Coolify/Traefik proxy's job: it reaches this container over the
+    # `clementi` network via the domain assigned to the service. A published
+    # mapping here would bypass Traefik and the Cloudflare Tunnel, dropping the
+    # Cloudflare WAF and stripping `cf-connecting-ip` — the one header
+    # src/utils/rate-limiter.ts trusts for per-client bucketing. A direct
+    # caller controls the fallback `x-forwarded-for`, which would make the
+    # 3-per-5-minute redemption limit trivially bypassable.
+    #
+    # Local/CI verification must use docker-compose.verify.yml, which adds a
+    # loopback-bound (127.0.0.1) mapping. Never add a mapping to this file.
+    expose:
+      - "4321"
 
     depends_on:
       db:
@@ -88,6 +95,18 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 5
+
+    # The runtime drops to a non-root user in the Dockerfile; these keep it
+    # there and stop a colocated stack from filling the host disk.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     networks: [clementi]
 
@@ -130,7 +149,12 @@ services:
   #   docker compose --profile nocodb up -d nocodb
   # -------------------------------------------------------------------------
   nocodb:
-    image: nocodb/nocodb:latest
+    # Pinned, not `latest`. The least-privilege boundary is calibrated against
+    # this release's data-source behaviour (the `42501` responses recorded in
+    # the runbook): an unreviewed upstream release plus `restart:
+    # unless-stopped` could change it on the next restart. Every other image in
+    # this file is pinned for the same reason.
+    image: nocodb/nocodb:2026.09.0
     profiles: [nocodb]
     restart: unless-stopped
     environment:
@@ -156,8 +180,24 @@ services:
       NC_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD:-}
     volumes:
       - nocodb-data:/usr/app/data
-    ports:
-      - "${NOCODB_HOST_PORT:-8080}:8080"
+    # No published host port. Reach the bundled UI through the domain Coolify
+    # assigns to this service (Traefik owns ingress) or an ssh tunnel. Two
+    # reasons not to publish it: it would bypass the Cloudflare Tunnel, and on a
+    # host that already runs Coolify the default port collides with
+    # coolify-proxy's own :8080 binding, so the container would not start.
+    expose:
+      - "8080"
+    # Upstream runs this image as root; no-new-privileges is still worth having
+    # and does not change behaviour. `cap_drop: [ALL]` is deliberately NOT set
+    # here — unlike `web`, this is a third-party image whose startup has not
+    # been audited for capability requirements.
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy

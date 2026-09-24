@@ -12,6 +12,15 @@
 #   * GEMINI_API_KEY=""         — the n8n fallback above takes precedence.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
+#
+# A bare `up -d` with this overlay boots `web` in the relaxed posture above. When you
+# only need the database (e.g. for scripts/deploy-nocodb-config.sh), name the service:
+#
+#   docker compose -p 321clementi-parking-verify \
+#     -f docker-compose.yml -f docker-compose.verify.yml up -d db
+#
+# Always pass an explicit `-p`. Without it this overlay joins the *production* project
+# name, and a later `down -v` would delete the deployed volume.
 # ---------------------------------------------------------------------------
 services:
   web:
@@ -22,3 +31,16 @@ services:
     extra_hosts:
       # Makes the host-run mock verifier reachable from inside the container.
       - "host.docker.internal:host-gateway"
+
+    # Loopback only, and only in this never-deployed overlay — the deployable
+    # compose file publishes no host port at all. CI asserts both properties
+    # (see the "Validate docker-compose configuration" job step).
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-4321}:4321"
+
+  # scripts/deploy-nocodb-config.sh runs from the host and probes the database
+  # directly; the deployable file publishes no port, so the overlay supplies a
+  # loopback-only one. See docs/operations/COOLIFY_DEPLOYMENT.md §5.
+  db:
+    ports:
+      - "127.0.0.1:${VERIFY_DB_PORT:-15432}:5432"
