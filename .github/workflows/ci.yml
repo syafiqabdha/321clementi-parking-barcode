@@ -89,12 +89,10 @@ jobs:
           POSTGRES_DB: ci
           PLATE_HMAC_SECRET: ci-placeholder-not-a-secret
           ADMIN_API_KEY: ci-placeholder-not-a-secret
-          NC_AUTH_JWT_SECRET: ci-placeholder-not-a-secret
         run: |
           set -euo pipefail
           docker compose config --quiet
-          docker compose --profile nocodb config --quiet
-          echo 'compose configuration valid (default and nocodb profiles)'
+          echo 'compose configuration valid'
 
           # Port-exposure guard. The deployable file must publish NOTHING on the
           # host: a published mapping bypasses Traefik and the Cloudflare Tunnel,
@@ -104,30 +102,26 @@ jobs:
           # loopback. Regression guard for the PAN-109 security review; a
           # `-p 4321:4321`-style default previously slipped past `config --quiet`.
           docker compose config --format json > /tmp/base.json
-          docker compose --profile nocodb config --format json > /tmp/nocodb.json
           docker compose -f docker-compose.yml -f docker-compose.verify.yml \
             config --format json > /tmp/verify.json
 
           python3 - <<'PY'
           import json, sys
 
-          def services(path):
+          def doc(path):
               with open(path) as fh:
-                  return json.load(fh).get('services', {})
+                  return json.load(fh)
 
           failed = False
-          for label, path in (
-              ('docker-compose.yml', '/tmp/base.json'),
-              ('docker-compose.yml --profile nocodb', '/tmp/nocodb.json'),
-          ):
-              for name, svc in services(path).items():
+          for path in ('/tmp/base.json',):
+              for name, svc in doc(path).get('services', {}).items():
                   for port in (svc.get('ports') or []):
                       print(f'::error file=docker-compose.yml::service {name} '
                             f'publishes {port} — the deployable file must publish '
                             f'no host port (use docker-compose.verify.yml)')
                       failed = True
 
-          for name, svc in services('/tmp/verify.json').items():
+          for name, svc in doc('/tmp/verify.json').get('services', {}).items():
               for port in (svc.get('ports') or []):
                   if port.get('host_ip') != '127.0.0.1':
                       print(f'::error file=docker-compose.verify.yml::service {name} '
@@ -135,10 +129,39 @@ jobs:
                             f'port mappings must be bound to 127.0.0.1')
                       failed = True
 
+          # The `clementi` network name is the documented bridge target for the
+          # centralized NocoDB (docs/operations/COOLIFY_DEPLOYMENT.md §4), and the
+          # verification overlay must land on a different one: a literal `name:`
+          # wins over `docker compose -p`, so a project name alone no longer
+          # isolates a throwaway database from the production network.
+          for path, fname, expected in (
+              ('/tmp/base.json', 'docker-compose.yml', '321clementi-parking_clementi'),
+              ('/tmp/verify.json', 'docker-compose.verify.yml', '321clementi-parking-verify_clementi'),
+          ):
+              actual = (doc(path).get('networks') or {}).get('clementi', {}).get('name')
+              if actual != expected:
+                  print(f'::error file={fname}::network clementi is named {actual!r}, '
+                        f'expected {expected!r} — the NocoDB bridge step depends on the '
+                        f'first name being stable, and the second keeps verification off '
+                        f'the production network')
+                  failed = True
+
+          # The production name must be a literal too. An env-var indirection
+          # would let Coolify's environment panel rename the network, and this
+          # guard cannot see it through `config` — the output shows the expanded
+          # default either way.
+          with open('docker-compose.yml') as fh:
+              if 'CLEMENTI_NETWORK_NAME' in fh.read():
+                  print('::error file=docker-compose.yml::the production network name is '
+                        'env-overridable — keep it a literal and put any override in '
+                        'docker-compose.verify.yml instead')
+                  failed = True
+
           if failed:
               sys.exit(1)
-          print('port-exposure guard OK — deployable file publishes no host port; '
-                'verification overlay is loopback-only')
+          print('compose guards OK — deployable file publishes no host port, '
+                'verification overlay is loopback-only and network-isolated, '
+                'network names pinned and not env-overridable')
           PY
 
       # Builds the production image, boots PostgreSQL 16 + the web container,
