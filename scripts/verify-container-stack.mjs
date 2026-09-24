@@ -160,15 +160,23 @@ console.log(`[info] image size ${(Number(sizeRaw) / 1024 / 1024).toFixed(1)} MiB
 // ---------------------------------------------------------------------------
 console.log('\n=== 2. Start PostgreSQL 16 ===');
 compose('up', '-d', 'db');
-let dbReady = false;
+// Readiness must be an *authenticated query*, not `pg_isready`. During first
+// boot the postgres entrypoint runs initdb against a temporary server that also
+// answers pg_isready on the unix socket; it is then shut down and the real
+// server started. A pg_isready-based probe passes against that temporary server
+// and the next psql lands in the restart window with "No such file or directory".
+// Requiring a real query (and taking the version from it) has no such window.
+let pgVersion = '';
 for (let i = 0; i < 60; i++) {
-  const r = composeSoft('exec', '-T', 'db', 'pg_isready', '-U', DB_USER, '-d', DB_NAME);
-  if (r.status === 0) { dbReady = true; break; }
+  const r = composeSoft('exec', '-T', 'db', 'psql', '-U', DB_USER, '-d', DB_NAME, '-tAc', 'SHOW server_version;');
+  if (r.status === 0 && /^16\./.test((r.stdout ?? '').trim())) {
+    pgVersion = (r.stdout ?? '').trim();
+    break;
+  }
   sleep(1000);
 }
-check('PostgreSQL 16 container reports ready', dbReady);
-if (!dbReady) { cleanup(); process.exit(1); }
-const pgVersion = compose('exec', '-T', 'db', 'psql', '-U', DB_USER, '-d', DB_NAME, '-tAc', 'SHOW server_version;');
+check('PostgreSQL 16 is accepting authenticated queries', pgVersion !== '');
+if (!pgVersion) { cleanup(); process.exit(1); }
 check('server is PostgreSQL 16.x', /^16\./.test(pgVersion), pgVersion);
 console.log(`[info] server_version ${pgVersion}`);
 

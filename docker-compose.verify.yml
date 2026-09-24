@@ -12,6 +12,15 @@
 #   * GEMINI_API_KEY=""         — the n8n fallback above takes precedence.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
+#
+# A bare `up -d` with this overlay boots `web` in the relaxed posture above. When you
+# only need the database (e.g. for scripts/deploy-nocodb-config.sh), name the service:
+#
+#   docker compose -p 321clementi-parking-verify \
+#     -f docker-compose.yml -f docker-compose.verify.yml up -d db
+#
+# Always pass an explicit `-p`. Without it this overlay joins the *production* project
+# name, and a later `down -v` would delete the deployed volume.
 # ---------------------------------------------------------------------------
 services:
   web:

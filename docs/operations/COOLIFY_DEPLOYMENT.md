@@ -59,6 +59,15 @@ same image is deliberate — the applied schema can never drift from the code th
 
 ```bash
 # 1. Build + start the database
+#
+# First, confirm the project has no pre-existing volume. `docker-compose.yml`
+# pins `name: 321clementi-parking`, so any earlier run (including a verification
+# run) that used this project name has already initialised and migrated
+# `321clementi-parking_pgdata` — production would then start on a database
+# seeded by a smoke test. Verification must use its own project name
+# (`scripts/verify-container-stack.mjs` does: `-p 321clementi-parking-verify`).
+docker volume ls --format '{{.Name}}' | grep '^321clementi-parking_' && \
+  echo 'ABORT: volume already exists — confirm nothing else uses it, then docker compose -p 321clementi-parking down -v'
 docker compose up -d db
 docker compose exec db pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
@@ -76,32 +85,38 @@ docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c 'ALTER TABLE voucher_pool VALIDATE CONSTRAINT ck_voucher_pool_voucher_code_numeric_10;'
 
 # 4. Least-privilege role for the NocoDB data source
-# The password goes through stdin into the container's environment, never as an
-# argv value: `psql -v mall_ops_password=…` would expose it to every local user
-# in `ps -ef` and in shell history. The first line of the stream is the
-# password, the rest is the script; the script's \getenv reads the variable.
-{ printf '%s\n' "$MALL_OPS_DB_PASSWORD"; cat scripts/nocodb-db-roles.sql; } \
-  | docker compose exec -T db sh -c '
-      IFS= read -r MALL_OPS_DB_PASSWORD
-      export MALL_OPS_DB_PASSWORD
-      exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
-        -v mall_ops_db="$POSTGRES_DB" -f -'
+# The password is exported in the operator's own shell and passed by NAME
+# (`-e VAR` with no value), so no argv anywhere carries it — neither the host's
+# `docker compose exec` nor the container's `psql`. scripts/nocodb-db-roles.sql
+# reads it with \getenv. Never inline the value: `-v mall_ops_password=…` puts it
+# in `ps aux` for every local user, and in shell history.
+export MALL_OPS_DB_PASSWORD="$(openssl rand -hex 24)"   # or read it from your vault
+docker compose exec -T -e MALL_OPS_DB_PASSWORD db \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+       -v mall_ops_db="$POSTGRES_DB" -f - < scripts/nocodb-db-roles.sql
 
 # 5. Start the application
 docker compose up -d web
 docker compose ps      # web must report (healthy)
 
 # 6. Post-deploy smoke test through the PUBLIC hostname — do this before announcing.
-# The CSRF origin check compares `Origin` with the origin Astro derives from
-# x-forwarded-proto / x-forwarded-host / Host. cloudflared → Traefik is plain HTTP, so if
-# the container ends up seeing `http` the derived origin is http://… and every same-site
-# form POST is rejected with `403 Cross-site POST form submissions are forbidden`.
-# ALLOWED_SITE_DOMAINS entries are deliberately protocol-agnostic to survive that; this
-# check proves it end to end.
+# The CSRF origin gate compares `Origin` against the origin Astro derives from
+# x-forwarded-proto / x-forwarded-host / Host — the protocol counts. cloudflared
+# reaches Traefik over plain HTTP (http://localhost:80, see §7.5), so if the app ends
+# up seeing `http` while the shopper's browser sends `https://…`, every same-site form
+# POST is rejected with `403 Cross-site POST form submissions are forbidden`.
+# ALLOWED_SITE_DOMAINS only widens which *hostnames* are accepted; it cannot make a
+# protocol mismatch pass. This check is what proves the chain end to end.
+#
+# Send it as FORM data, exactly as the portal does: Astro's origin gate applies only to
+# form-like content types, so a JSON POST sails straight past the very check this
+# exercises.
 curl -sS -o /dev/null -w '%{http_code}\n' -X POST "https://<production-hostname>/api/v1/redemptions" \
-  -H 'Content-Type: application/json' -H "Origin: https://<production-hostname>" \
-  --data '{"receiptNumber":"SMOKE-TEST","shopId":1}'
-# Expect a validation/verification error (400/409/422) — anything but 403.
+  -H "Origin: https://<production-hostname>" \
+  -F 'shopId=1' -F 'receiptNumber=SMOKE-TEST'
+# Expect 400/409/422 — the request reached the handler and the payload was rejected.
+# 403 means the origin gate fired: fix the proxy per §7.5, not the app config.
+# Never use a real receipt number here: a 201 is a live redemption.
 ```
 
 ### Rollback
@@ -321,6 +336,62 @@ only that project's volumes, so it cannot touch the live `pgdata` / `nocodb-data
 revisions of this runbook recommended it here without that isolation — it shared the production
 project name and would have deleted the deployed database. It now refuses to start if
 `VERIFY_PROJECT` names the production project.
+
+### 7.5 The CSRF origin gate needs the proxy to present `https` (launch blocker)
+
+**Symptom.** Once the portal is live, every redemption is rejected with
+`403 Cross-site POST form submissions are forbidden`, while `curl` from the host and the
+container stack check both look healthy.
+
+**Cause (measured on this host).** Every cloudflared ingress rule points at
+`http://localhost:80`, and this cloudflared runs with `network_mode: host`, so Traefik
+receives a plain-HTTP request from a *local* source. Traefik honours inbound
+`X-Forwarded-*` only from trusted sources:
+
+```console
+$ docker inspect coolify-proxy --format '{{join .Args "\n"}}' | grep forwardedHeaders
+--entrypoints.http.forwardedHeaders.trustedIPs=173.245.48.0/20,103.21.244.0/22,…
+```
+
+Those are Cloudflare's *public* egress ranges. cloudflared connects from the host itself,
+so its forwarded headers are ignored and Traefik re-derives the scheme from its own
+connection → `X-Forwarded-Proto: http` → the app builds `http://<host>` → the browser's
+`https://<host>` Origin never matches → 403. Note there is no `…https.forwardedHeaders…`
+arg, and none is needed while the tunnel dials the http entrypoint.
+
+Measured against the built server, form-encoded POST as the portal sends it:
+
+| Origin | X-Forwarded-Proto | Result |
+| --- | --- | --- |
+| `https://host` | `https` | reaches the handler (400 `MISSING_RECEIPT`) |
+| `https://host` | `http` | **403** |
+| `http://host` | `http` | reaches the handler |
+| `https://evil.example` | `https` | 403 — the allowlist holds |
+| absent | absent | 403 |
+
+**Fix — pick one, then re-run §3 step 6.**
+
+- **A. Trust the tunnel's local source on the http entrypoint** (smallest change). Add the
+  address Traefik actually sees for cloudflared to that entrypoint's trusted list, next to
+  Cloudflare's ranges. In Coolify this is the proxy's `forwardedHeaders.trustedIPs` — the
+  `coolify-proxy` arg quoted above. `127.0.0.1/32` and the docker bridge gateway of
+  Traefik's `coolify` network (e.g. `10.0.1.1`) cover the two ways a host-network client
+  reaches a published port; confirm which appears in Traefik's access log for
+  `<production-hostname>` and trust that one.
+- **B. Make the tunnel speak TLS to Traefik.** Add an ingress rule with
+  `service: https://localhost:443` and
+  `originRequest: {originServerName: <production-hostname>, noTLSVerify: false}`; Traefik
+  then terminates real HTTPS and sets `X-Forwarded-Proto: https` itself. Requires a
+  certificate for the hostname to exist first — it does not yet (§7.2), so A is the
+  pragmatic path.
+
+Do **not** use `forwardedHeaders.insecure=true`. It trusts `X-Forwarded-*` from every
+client, letting a direct caller forge both `X-Forwarded-Proto` **and** the
+`CF-Connecting-IP` that `src/utils/rate-limiter.ts` keys on (§8) — that silently disables
+the per-IP rate limit.
+
+Until step 6 returns a non-403, the application is unusable from the portal: do not
+announce the deployment.
 
 ## 8. Security posture — accepted trade-offs
 
