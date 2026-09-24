@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Verification overlay — DO NOT DEPLOY THIS FILE.
+#
+# Used only by scripts/verify-container-stack.mjs (and the CI container job) to
+# drive a full redemption through the real container stack:
+#
+#   * NODE_ENV=development      — the production posture fails closed without a
+#                                 Cloudflare Turnstile secret, which would make
+#                                 every redemption 400 before reaching the DB.
+#   * N8N_RECEIPT_VERIFIER_URL  — replays a deterministic receipt extraction so
+#                                 the run needs no Gemini quota.
+#   * GEMINI_API_KEY=""         — the n8n fallback above takes precedence.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
+# ---------------------------------------------------------------------------
+services:
+  web:
+    environment:
+      NODE_ENV: development
+      GEMINI_API_KEY: ""
+      N8N_RECEIPT_VERIFIER_URL: "http://host.docker.internal:4406/verify"
+    extra_hosts:
+      # Makes the host-run mock verifier reachable from inside the container.
+      - "host.docker.internal:host-gateway"

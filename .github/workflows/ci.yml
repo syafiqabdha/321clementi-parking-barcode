@@ -45,8 +45,61 @@ jobs:
       - name: Build web portal
         run: bun run build
 
+      # Guards the SSR regression that silently breaks every API route: without
+      # `output: 'server'` plus an adapter, Astro prerenders src/pages/api/** at
+      # build time and ships empty response bodies. A green `astro build` alone
+      # does not prove the routes are server-rendered.
+      - name: Assert the build produced a server bundle, not prerendered APIs
+        run: |
+          set -euo pipefail
+          test -f dist/server/entry.mjs \
+            || { echo '::error::dist/server/entry.mjs missing — the Astro adapter or output:server was removed from astro.config.mjs'; exit 1; }
+          if [ -d dist/api ]; then
+            echo '::error::dist/api exists — API routes were prerendered at build time; they will serve frozen empty responses'
+            exit 1
+          fi
+          echo 'SSR server bundle present; no prerendered API routes.'
+
       - name: Pre-pull test database image
         run: docker pull postgres:16-alpine
 
       - name: Run test suite
         run: bun test
+
+  container:
+    name: Container & Deployment Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Fails fast on YAML errors and on unresolved ${VAR:?} guards. The values
+      # are throwaway CI placeholders, never real secrets.
+      - name: Validate docker-compose configuration
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+          PLATE_HMAC_SECRET: ci-placeholder-not-a-secret
+          ADMIN_API_KEY: ci-placeholder-not-a-secret
+          NC_AUTH_JWT_SECRET: ci-placeholder-not-a-secret
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          docker compose --profile nocodb config --quiet
+          echo 'compose configuration valid (default and nocodb profiles)'
+
+      # Builds the production image, boots PostgreSQL 16 + the web container,
+      # applies migrations 0001–0005 from inside the runtime image, then drives a
+      # real receipt -> voucher -> barcode redemption and a duplicate rejection.
+      # This is the only gate that exercises the built image, the migration
+      # runner and the API routes together.
+      - name: Build and verify the container stack
+        run: bun scripts/verify-container-stack.mjs

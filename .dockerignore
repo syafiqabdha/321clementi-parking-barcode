@@ -1,0 +1,33 @@
+# Build context exclusions for the production image.
+# Anything secret or host-specific must never enter an image layer.
+
+# --- secrets / local environment ---
+.env
+.env.*
+!.env.example
+
+# --- build output & caches ---
+dist/
+.astro/
+.temp/
+node_modules/
+*.log
+
+# --- vcs & tooling ---
+.git/
+.github/
+.multica/
+.vscode/
+.idea/
+.DS_Store
+
+# --- not needed to build or run the server ---
+tests/
+e2e/
+docs/
+vercel.json
+docker-compose*.yml
+Dockerfile
+.dockerignore
+README.md
+LICENSE
