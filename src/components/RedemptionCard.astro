@@ -228,14 +228,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
       </div>
     </div>
 
-    <!-- Tester Switch -->
-    <div class="text-center pt-2">
+    <!-- Tester Switch (Internal / Dev only: append ?debug=true to URL to reveal) -->
+    <div id="tester-switch-container" class="hidden text-center pt-2">
       <button
         type="button"
         id="closed-mode-override-btn"
         class="text-xs text-clementi-crimson underline font-medium hover:text-action-hover"
       >
-        Tester Switch: Open Intake Form (Preview Mode)
+        Staff / Tester Preview Mode: Open Intake Form
       </button>
     </div>
   </div>
@@ -719,6 +719,13 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   });
 
   const closedOverrideBtn = document.getElementById('closed-mode-override-btn');
+  const testerSwitchContainer = document.getElementById('tester-switch-container');
+  // Reveal tester switch only if ?debug=true or ?state=preview is in the URL (hidden for regular shoppers)
+  const isDebugUrl = new URLSearchParams(window.location.search).has('debug') || new URLSearchParams(window.location.search).has('state');
+  if (isDebugUrl && testerSwitchContainer) {
+    testerSwitchContainer.classList.remove('hidden');
+  }
+
   closedOverrideBtn?.addEventListener('click', () => {
     closedSection?.classList.add('hidden');
     formSection.classList.remove('hidden');
