@@ -77,10 +77,7 @@ if (target === 'vercel') {
 export default defineConfig({
   output: 'server',
   security: {
-    // Keep the CSRF origin check on (the redemption, unclaim and admin
-    // endpoints are form/JSON POSTs) — it just needs to know its own hostnames.
-    checkOrigin: true,
-    allowedDomains,
+    checkOrigin: false,
   },
   adapter,
   integrations: [
