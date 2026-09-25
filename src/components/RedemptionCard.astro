@@ -222,7 +222,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
         <h3 class="font-display text-sm text-red-900 font-bold leading-snug">
           Redemption Unavailable
         </h3>
-        <p class="text-xs text-red-800 leading-relaxed font-body">
+        <p id="closed-desc-text" class="text-xs text-red-800 leading-relaxed font-body">
           The automated carpark redemption portal is closed outside operating hours. Please return between <strong>12:00 PM – 3:00 PM (Monday to Friday)</strong> to scan your receipts and redeem your 2-hour waiver.
         </p>
       </div>
@@ -697,10 +697,14 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   // Listen to operating status events from RedemptionBanner
   window.addEventListener('clementi:operating-status', ((event: CustomEvent) => {
     const detail = event.detail;
+    const closedDesc = document.getElementById('closed-desc-text');
     if (detail && !detail.open) {
       if (!barcodeSection || barcodeSection.classList.contains('hidden')) {
         formSection.classList.add('hidden');
         closedSection?.classList.remove('hidden');
+        if (closedDesc && detail.result?.message) {
+          closedDesc.textContent = detail.result.message;
+        }
       }
     } else if (detail && detail.open) {
       if (!barcodeSection || barcodeSection.classList.contains('hidden')) {

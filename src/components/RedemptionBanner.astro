@@ -70,11 +70,13 @@
     const indicator = document.getElementById('live-operating-indicator');
     if (!statusPill || !statusText || !indicator) return;
 
-    // Support mock preview force flag via query param or window global (e.g. ?state=closed or ?state=active)
+    // Support mock preview force flag via query param or window global (e.g. ?state=closed or ?state=active or ?mock_date=...)
     const urlParams = new URLSearchParams(window.location.search);
     const forcedState = urlParams.get('state');
+    const mockDateStr = urlParams.get('mock_date');
+    const targetDate = mockDateStr ? new Date(mockDateStr) : new Date();
 
-    const result = checkOperatingWindow();
+    const result = checkOperatingWindow(targetDate);
     const isOpen = forcedState === 'active' || (forcedState !== 'closed' && result.allowed);
 
     if (isOpen) {
