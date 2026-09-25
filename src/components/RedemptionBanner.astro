@@ -82,12 +82,12 @@
     if (isOpen) {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 font-display';
       indicator.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
-      statusText.textContent = result.isGracePeriod ? 'Grace Period Active (11:30–3:30)' : '12:00 PM – 3:00 PM Active';
+      statusText.textContent = '12:00 PM – 3:00 PM Active';
       window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: true, result } }));
     } else if (result.reason === 'BEFORE_OPERATING_HOURS') {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-800 font-display';
       indicator.className = 'w-1.5 h-1.5 rounded-full bg-amber-500';
-      statusText.textContent = 'Starts at 12:00 PM (11:30 Early)';
+      statusText.textContent = 'Starts at 12:00 PM';
       window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, upcoming: true, result } }));
     } else if (result.reason === 'PUBLIC_HOLIDAY_NOT_ALLOWED') {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800 font-display';

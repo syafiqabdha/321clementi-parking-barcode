@@ -52,9 +52,8 @@ export async function getDbHolidayOverrides(): Promise<
  * Server-side evaluation of operating window including dynamic NocoDB overrides.
  */
 export async function checkServerOperatingWindow(
-  date: Date = new Date(),
-  graceBufferMinutes: number = 30
+  date: Date = new Date()
 ): Promise<OperatingWindowResult> {
   const overrides = await getDbHolidayOverrides();
-  return checkOperatingWindow(date, graceBufferMinutes, overrides);
+  return checkOperatingWindow(date, overrides);
 }

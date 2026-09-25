@@ -76,18 +76,21 @@ export interface OperatingWindowResult {
 }
 
 /**
- * Checks whether the specified timestamp in Singapore Time (SGT) is eligible for redemption.
+ * Checks whether the specified timestamp in Singapore Time (SGT = UTC+8) is eligible for redemption.
+ *
+ * Policy:
+ *   - Strict operating window: 12:00 PM <= SGT Time < 3:00 PM (15:00).
+ *   - Days: Monday to Friday only.
+ *   - Exclusions: Weekends and Singapore Public Holidays.
  *
  * @param date - Date to check (defaults to current system time).
- * @param graceBufferMinutes - Grace buffer in minutes before 12:00 and after 15:00 (default: 30).
  * @param holidayOverrides - Optional DB-backed holiday map from back-office NocoDB { [dateStr]: { name: string, is_closed: boolean } }.
  */
 export function checkOperatingWindow(
   date: Date = new Date(),
-  graceBufferMinutes: number = 30,
   holidayOverrides?: Record<string, { name: string; is_closed: boolean }>
 ): OperatingWindowResult {
-  // Format accurately to Asia/Singapore (SGT = UTC+8)
+  // Format accurately to Asia/Singapore (SGT = UTC+8) regardless of host system timezone
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Singapore',
     year: 'numeric',
@@ -164,46 +167,41 @@ export function checkOperatingWindow(
     };
   }
 
-  // 3. Time calculation in minutes from midnight
+  // 3. Strict Operating Hours in Singapore Time (12:00 PM – 3:00 PM)
   const currentMinutes = hours * 60 + minutes;
-  const officialStart = 12 * 60; // 12:00 = 720
-  const officialEnd = 15 * 60;   // 15:00 = 900
-  const earlyStart = officialStart - graceBufferMinutes; // 11:30 = 690
-  const lateEnd = officialEnd + graceBufferMinutes;       // 15:30 = 930
+  const officialStart = 12 * 60; // 12:00 PM = 720 min
+  const officialEnd = 15 * 60;   // 3:00 PM = 900 min
 
-  // Before early grace cutoff (before 11:30 AM)
-  if (currentMinutes < earlyStart) {
+  if (currentMinutes < officialStart) {
     return {
       allowed: false,
       isGracePeriod: false,
       reason: 'BEFORE_OPERATING_HOURS',
-      message: 'Redemption opens at 12:00 PM (11:30 AM early access).',
+      message: 'Redemption opens at 12:00 PM (Weekdays only).',
       sgtDate,
       sgtTime,
       sgtDayOfWeek,
     };
   }
 
-  // After late grace cutoff (at or after 3:30 PM / 15:30)
-  if (currentMinutes >= lateEnd) {
+  if (currentMinutes >= officialEnd) {
     return {
       allowed: false,
       isGracePeriod: false,
       reason: 'AFTER_OPERATING_HOURS',
-      message: 'Redemption window closed at 3:00 PM (3:30 PM cutoff).',
+      message: 'Redemption closed at 3:00 PM.',
       sgtDate,
       sgtTime,
       sgtDayOfWeek,
     };
   }
 
-  // Grace buffer active (11:30–12:00 or 15:00–15:30)
-  const isGrace = currentMinutes < officialStart || currentMinutes >= officialEnd;
+  // Within strict 12:00 PM – 3:00 PM window
   return {
     allowed: true,
-    isGracePeriod: isGrace,
-    reason: isGrace ? 'GRACE_PERIOD' : 'WITHIN_OPERATING_WINDOW',
-    message: isGrace ? '12:00 PM – 3:00 PM (Grace Period Active)' : '12:00 PM – 3:00 PM Active',
+    isGracePeriod: false,
+    reason: 'WITHIN_OPERATING_WINDOW',
+    message: '12:00 PM – 3:00 PM Active',
     sgtDate,
     sgtTime,
     sgtDayOfWeek,
