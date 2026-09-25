@@ -609,6 +609,7 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
             INVALID_RECEIPT: 'The uploaded image does not appear to be a valid receipt.',
             DUPLICATE_RECEIPT: 'This receipt has already been used for redemption today.',
             LOW_CONFIDENCE_IMAGE: 'Receipt image is unclear. Please retake with better lighting.',
+            PROMOTION_WINDOW_CLOSED: 'Redemption is only available on weekdays between 12:00 PM and 3:00 PM (excluding Singapore Public Holidays).',
           };
           const message = ERROR_MESSAGES[resJson.error as string] || resJson.message || resJson.error || 'Redemption failed. Please try again.';
           showError(message);
@@ -692,6 +693,22 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
     closedSection?.classList.add('hidden');
     formSection.classList.remove('hidden');
   });
+
+  // Listen to operating status events from RedemptionBanner
+  window.addEventListener('clementi:operating-status', ((event: CustomEvent) => {
+    const detail = event.detail;
+    if (detail && !detail.open) {
+      if (!barcodeSection || barcodeSection.classList.contains('hidden')) {
+        formSection.classList.add('hidden');
+        closedSection?.classList.remove('hidden');
+      }
+    } else if (detail && detail.open) {
+      if (!barcodeSection || barcodeSection.classList.contains('hidden')) {
+        closedSection?.classList.add('hidden');
+        formSection.classList.remove('hidden');
+      }
+    }
+  }) as EventListener);
 
   // Download Barcode as PNG (Canvas-to-PNG for native mobile gallery support)
   function downloadBarcodePng() {

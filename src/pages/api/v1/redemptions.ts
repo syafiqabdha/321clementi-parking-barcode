@@ -35,6 +35,7 @@ import {
   sha256Buffer,
   buildReceiptFingerprintHash,
 } from '../../../services/receipt-verifier';
+import { checkOperatingWindow } from '../../../utils/operating-window';
 
 const MIN_FORM_SUBMIT_MS = 1_500; // Gate 1b: timing gate threshold
 
@@ -42,6 +43,27 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const ip = getClientIp(request);
     const ua = request.headers.get('user-agent') || null;
+
+    // -----------------------------------------------------------------------
+    // Gate 0: Operating Window Gate (12 PM - 3 PM Weekdays with 30m grace buffer, no PH)
+    // -----------------------------------------------------------------------
+    const bypassWindow =
+      request.headers.get('X-Bypass-Window') === process.env.ADMIN_API_KEY ||
+      (process.env.NODE_ENV !== 'production' && request.headers.get('X-Bypass-Window') === 'test');
+    if (!bypassWindow) {
+      const windowStatus = checkOperatingWindow();
+      if (!windowStatus.allowed) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'PROMOTION_WINDOW_CLOSED',
+            message: `Automated parking redemption is only available on weekdays between 12:00 PM and 3:00 PM (excluding Public Holidays). ${windowStatus.message}`,
+            details: windowStatus,
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     // Parse form data
     const formData = await request.formData();

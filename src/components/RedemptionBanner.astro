@@ -61,6 +61,8 @@
 </section>
 
 <script>
+  import { checkOperatingWindow } from '../utils/operating-window';
+
   // Client-side helper to reflect Singapore Time (SGT UTC+8) operating status
   function updateOperatingWindow() {
     const statusPill = document.getElementById('live-operating-pill');
@@ -72,38 +74,33 @@
     const urlParams = new URLSearchParams(window.location.search);
     const forcedState = urlParams.get('state');
 
-    const now = new Date();
-    // Convert to SGT (UTC+8)
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const sgtTime = new Date(utc + (3600000 * 8));
+    const result = checkOperatingWindow();
+    const isOpen = forcedState === 'active' || (forcedState !== 'closed' && result.allowed);
 
-    const day = sgtTime.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-    const hours = sgtTime.getHours();
-    const isWeekday = day >= 1 && day <= 5;
-    const isLunchHour = hours >= 12 && hours < 15;
-
-    const isActive = forcedState === 'active' || (forcedState !== 'closed' && isWeekday && isLunchHour);
-    const isUpcoming = forcedState !== 'closed' && !isActive && isWeekday && hours < 12;
-
-    if (isActive) {
+    if (isOpen) {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 font-display';
       indicator.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
-      statusText.textContent = '12:00 PM – 3:00 PM Active';
-      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: true } }));
-    } else if (isUpcoming) {
+      statusText.textContent = result.isGracePeriod ? 'Grace Period Active (11:30–3:30)' : '12:00 PM – 3:00 PM Active';
+      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: true, result } }));
+    } else if (result.reason === 'BEFORE_OPERATING_HOURS') {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-800 font-display';
       indicator.className = 'w-1.5 h-1.5 rounded-full bg-amber-500';
-      statusText.textContent = 'Starts at 12:00 PM';
-      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, upcoming: true } }));
+      statusText.textContent = 'Starts at 12:00 PM (11:30 Early)';
+      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, upcoming: true, result } }));
+    } else if (result.reason === 'PUBLIC_HOLIDAY_NOT_ALLOWED') {
+      statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800 font-display';
+      indicator.className = 'w-1.5 h-1.5 rounded-full bg-rose-500';
+      statusText.textContent = `Closed • ${result.holidayName || 'Public Holiday'}`;
+      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, holiday: true, result } }));
     } else {
       statusPill.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-700 font-display';
       indicator.className = 'w-1.5 h-1.5 rounded-full bg-slate-400';
       statusText.textContent = 'Closed • Weekdays 12–3 PM';
-      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, upcoming: false } }));
+      window.dispatchEvent(new CustomEvent('clementi:operating-status', { detail: { open: false, upcoming: false, result } }));
     }
   }
 
   updateOperatingWindow();
-  // Periodically refresh window status every minute
-  setInterval(updateOperatingWindow, 60000);
+  // Periodically refresh window status every 30 seconds
+  setInterval(updateOperatingWindow, 30000);
 </script>
