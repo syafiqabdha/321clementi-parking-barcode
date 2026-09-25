@@ -1,6 +1,6 @@
 ---
 // Standard Carpark Rates Component (Bento Grid)
-// Extracted from 321 Clementi Carpark Schedule
+// 321 Clementi Mall Official Parking Schedule
 ---
 
 <section
@@ -10,38 +10,54 @@
 >
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
-      <span class="material-symbols-outlined text-clementi-crimson text-xl">schedule</span>
+      <span class="material-symbols-outlined text-clementi-crimson text-xl">local_parking</span>
       <h3 id="rates-heading" class="font-display font-bold text-sm sm:text-base text-clementi-charcoal">
         Standard Carpark Rates
       </h3>
     </div>
     <span class="text-[11px] text-clementi-crimson bg-pink-50 border border-pink-100 px-2 py-0.5 rounded font-display font-bold">
-      GST Included
+      Inclusive of GST
     </span>
   </div>
 
   <div class="grid grid-cols-2 gap-2.5 pt-1">
-    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left">
-      <p class="text-[11px] text-clementi-slate font-medium">Weekdays (7am – 5pm)</p>
-      <p class="font-display text-base font-bold text-clementi-charcoal mt-0.5">
-        $1.40 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hr</span>
-      </p>
-      <p class="text-[11px] text-clementi-slate/80 mt-0.5">$0.70 per sub 30 mins</p>
+    <!-- Card 1: Car Parking Rates -->
+    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left space-y-1">
+      <div class="flex items-center gap-1.5 text-clementi-charcoal">
+        <span class="material-symbols-outlined text-clementi-crimson text-base">directions_car</span>
+        <p class="text-xs font-display font-bold">Car Parking</p>
+      </div>
+      <div class="pt-1">
+        <p class="font-display text-base font-bold text-clementi-charcoal leading-tight">
+          $1.50 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hour</span>
+        </p>
+        <p class="text-[11px] text-clementi-slate mt-1 font-medium">
+          $0.80 <span class="font-normal text-clementi-slate/80">every half hour</span>
+        </p>
+      </div>
     </div>
 
-    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left">
-      <p class="text-[11px] text-clementi-slate font-medium">Weekends & PH</p>
-      <p class="font-display text-base font-bold text-clementi-charcoal mt-0.5">
-        $1.60 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hr</span>
-      </p>
-      <p class="text-[11px] text-clementi-slate/80 mt-0.5">$0.80 per sub 30 mins</p>
+    <!-- Card 2: Motorcycle Parking Rates -->
+    <div class="bg-clementi-subtle p-3 rounded-xl border border-clementi-border text-left space-y-1">
+      <div class="flex items-center gap-1.5 text-clementi-charcoal">
+        <span class="material-symbols-outlined text-clementi-crimson text-base">two_wheeler</span>
+        <p class="text-xs font-display font-bold">Motorcycle</p>
+      </div>
+      <div class="pt-1">
+        <p class="font-display text-base font-bold text-clementi-charcoal leading-tight">
+          $1.00 <span class="text-[11px] font-normal text-clementi-slate">/ 1st hour</span>
+        </p>
+        <p class="text-[11px] text-clementi-slate mt-1 font-medium">
+          $0.50 <span class="font-normal text-clementi-slate/80">every half hour</span>
+        </p>
+      </div>
     </div>
   </div>
 
   <div class="rounded-lg bg-emerald-50/80 border border-emerald-200/60 p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
     <span class="material-symbols-outlined text-clementi-green text-base shrink-0 fill-1" style="font-variation-settings: 'FILL' 1;">verified</span>
     <span>
-      <strong>Free Parking Promotion:</strong> 2 Hours Free Waiver for entries 12:00 PM – 3:00 PM weekdays with $30 qualifying spend.
+      <strong>Free Parking Promotion:</strong> 2 Hours Free Parking Waiver weekdays 12:00 PM – 3:00 PM with min. $30 qualifying spend.
     </span>
   </div>
 </section>
