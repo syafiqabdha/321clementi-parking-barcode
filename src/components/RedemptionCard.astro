@@ -370,6 +370,36 @@ import ClaimHistoryModal from './ClaimHistoryModal.astro';
   const formSection = document.getElementById('redemption-form-section') as HTMLElement;
   const closedSection = document.getElementById('redemption-closed-section') as HTMLElement;
   const barcodeSection = document.getElementById('barcode-result-section') as HTMLElement;
+
+  import { checkOperatingWindow } from '../utils/operating-window';
+
+  function applyOperatingWindowState() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const forcedState = urlParams.get('state');
+    const mockDateStr = urlParams.get('mock_date');
+    const targetDate = mockDateStr ? new Date(mockDateStr) : new Date();
+
+    const result = checkOperatingWindow(targetDate);
+    const isOpen = forcedState === 'active' || (forcedState !== 'closed' && result.allowed);
+
+    const closedDesc = document.getElementById('closed-desc-text');
+    if (!isOpen) {
+      if (!barcodeSection || barcodeSection.classList.contains('hidden')) {
+        formSection.classList.add('hidden');
+        closedSection?.classList.remove('hidden');
+        if (closedDesc && result.message) {
+          closedDesc.textContent = result.message;
+        }
+      }
+    } else {
+      if (!barcodeSection || barcodeSection.classList.contains('hidden')) {
+        closedSection?.classList.add('hidden');
+        formSection.classList.remove('hidden');
+      }
+    }
+  }
+
+  applyOperatingWindowState();
   const shopSelect = document.getElementById('shop-select') as HTMLSelectElement;
   const shopCountLabel = document.getElementById('shop-count-label') as HTMLElement;
   const dropzone = document.getElementById('receipt-dropzone') as HTMLElement;
