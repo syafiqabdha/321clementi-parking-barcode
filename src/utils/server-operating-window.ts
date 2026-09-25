@@ -26,9 +26,12 @@ export async function getDbHolidayOverrides(): Promise<
   }
 
   try {
-    const db = getDb();
-    const res = await db.query(GET_PUBLIC_HOLIDAYS_QUERY);
-    const rows = res.rows as DbHolidayRow[];
+    const sql = getDb();
+    const rows = (await sql`
+      SELECT to_char(holiday_date, 'YYYY-MM-DD') AS holiday_date, holiday_name, is_closed, notes
+      FROM public_holidays
+      ORDER BY holiday_date ASC
+    `) as DbHolidayRow[];
     const map: Record<string, { name: string; is_closed: boolean }> = {};
     for (const row of rows) {
       map[row.holiday_date] = {
