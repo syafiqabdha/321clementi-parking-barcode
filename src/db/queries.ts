@@ -317,3 +317,16 @@ WHERE vehicle_plate = $1
   AND action = 'UNCLAIM'
   AND created_at >= CURRENT_DATE;
 `;
+
+/** Public Holidays queries for dynamic Back-Office NocoDB management */
+export const GET_PUBLIC_HOLIDAYS_QUERY = `
+SELECT to_char(holiday_date, 'YYYY-MM-DD') AS holiday_date, holiday_name, is_closed, notes
+FROM public_holidays
+ORDER BY holiday_date ASC;
+`;
+
+export const GET_PUBLIC_HOLIDAY_BY_DATE_QUERY = `
+SELECT to_char(holiday_date, 'YYYY-MM-DD') AS holiday_date, holiday_name, is_closed, notes
+FROM public_holidays
+WHERE holiday_date = $1::date;
+`;

@@ -80,10 +80,12 @@ export interface OperatingWindowResult {
  *
  * @param date - Date to check (defaults to current system time).
  * @param graceBufferMinutes - Grace buffer in minutes before 12:00 and after 15:00 (default: 30).
+ * @param holidayOverrides - Optional DB-backed holiday map from back-office NocoDB { [dateStr]: { name: string, is_closed: boolean } }.
  */
 export function checkOperatingWindow(
   date: Date = new Date(),
-  graceBufferMinutes: number = 30
+  graceBufferMinutes: number = 30,
+  holidayOverrides?: Record<string, { name: string; is_closed: boolean }>
 ): OperatingWindowResult {
   // Format accurately to Asia/Singapore (SGT = UTC+8)
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -136,9 +138,20 @@ export function checkOperatingWindow(
     };
   }
 
-  // 2. Singapore Public Holiday check
-  const holidayName = SINGAPORE_PUBLIC_HOLIDAYS[sgtDate];
-  if (holidayName) {
+  // 2. Singapore Public Holiday check (NocoDB DB overrides take precedence, then built-in calendar)
+  let isHolidayClosed = false;
+  let holidayName: string | undefined;
+
+  if (holidayOverrides && holidayOverrides[sgtDate]) {
+    const override = holidayOverrides[sgtDate];
+    holidayName = override.name;
+    isHolidayClosed = override.is_closed;
+  } else {
+    holidayName = SINGAPORE_PUBLIC_HOLIDAYS[sgtDate];
+    isHolidayClosed = Boolean(holidayName);
+  }
+
+  if (isHolidayClosed && holidayName) {
     return {
       allowed: false,
       isGracePeriod: false,

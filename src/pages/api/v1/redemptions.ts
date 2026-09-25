@@ -35,7 +35,7 @@ import {
   sha256Buffer,
   buildReceiptFingerprintHash,
 } from '../../../services/receipt-verifier';
-import { checkOperatingWindow } from '../../../utils/operating-window';
+import { checkServerOperatingWindow } from '../../../utils/server-operating-window';
 
 const MIN_FORM_SUBMIT_MS = 1_500; // Gate 1b: timing gate threshold
 
@@ -51,7 +51,7 @@ export const POST: APIRoute = async ({ request }) => {
       request.headers.get('X-Bypass-Window') === process.env.ADMIN_API_KEY ||
       (process.env.NODE_ENV !== 'production' && request.headers.get('X-Bypass-Window') === 'test');
     if (!bypassWindow) {
-      const windowStatus = checkOperatingWindow();
+      const windowStatus = await checkServerOperatingWindow();
       if (!windowStatus.allowed) {
         return new Response(
           JSON.stringify({
